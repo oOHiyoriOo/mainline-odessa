@@ -185,6 +185,39 @@ OnUnitActiveSec=30s
 WantedBy=timers.target
 EOF
 
+# --- SSH-only console: blank the framebuffer after boot --------------------
+# There is no backlight class with simpledrm, so this clears the scanout to
+# black and suppresses further console output. getty@tty1 is masked because
+# no keyboard is attached and its login prompt would redraw the screen.
+cat > "$R/usr/local/sbin/odessa-screen-off.sh" <<'EOF'
+#!/bin/sh
+# Run once after boot: silence console output and clear the framebuffer.
+echo 1 > /proc/sys/kernel/printk 2>/dev/null || true
+systemctl log-level warning 2>/dev/null || true
+systemctl log-target journal 2>/dev/null || true
+VS=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null) || exit 0
+W=${VS%,*}; H=${VS#*,}
+BPP=$(cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null || echo 32)
+[ -n "$W" ] && [ -n "$H" ] || exit 0
+BYTES=$((W * H * BPP / 8))
+dd if=/dev/zero of=/dev/fb0 bs=4096 count=$(( (BYTES + 4095) / 4096 )) 2>/dev/null || true
+EOF
+chmod 755 "$R/usr/local/sbin/odessa-screen-off.sh"
+
+cat > "$R/etc/systemd/system/odessa-screen-off.service" <<'EOF'
+[Unit]
+Description=Blank the framebuffer console for SSH-only operation
+After=systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/odessa-screen-off.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # --- enable units without systemctl ---------------------------------------
 mkdir -p "$R/etc/systemd/system/sysinit.target.wants" \
          "$R/etc/systemd/system/multi-user.target.wants" \
@@ -193,6 +226,9 @@ ln -sf /etc/systemd/system/usb-gadget.service  "$R/etc/systemd/system/sysinit.ta
 ln -sf /etc/systemd/system/dropbear.service    "$R/etc/systemd/system/multi-user.target.wants/dropbear.service"
 ln -sf /etc/systemd/system/odessa-growfs.service "$R/etc/systemd/system/multi-user.target.wants/odessa-growfs.service"
 ln -sf /etc/systemd/system/battery-guard.timer "$R/etc/systemd/system/timers.target.wants/battery-guard.timer"
+ln -sf /etc/systemd/system/odessa-screen-off.service "$R/etc/systemd/system/multi-user.target.wants/odessa-screen-off.service"
+# local console login is not usable (no keyboard); SSH is the access path
+ln -sf /dev/null "$R/etc/systemd/system/getty@tty1.service"
 # no networkd in this rootfs; drop leftovers if a previous run added them
 rm -f "$R/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" \
       "$R/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true
