@@ -182,6 +182,7 @@ elif [ -n "$v" ]; then
 fi
 new=$(cat "$CHG" 2>/dev/null)
 [ "$old" != "$new" ] && echo "battery-guard: cap=${cap:-?} v=${v:-?} charge=$new" > /dev/kmsg
+exit 0
 EOF
 chmod 755 "$R/usr/local/sbin/battery-guard.sh"
 
