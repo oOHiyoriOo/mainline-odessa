@@ -19,10 +19,13 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Storage | UFS, root on `/dev/sdb24` (userdata), growfs to 107 G |
 | USB | DWC3/QUSB2 gadget, NCM, `usb0` 172.16.42.1/24, Dropbear SSH |
 | Userspace | Ubuntu 26.04.1 LTS, systemd 259.9, dbus, iproute2 |
+| Battery | 40-60% charge guard, PM6150 charge control (0x1042[0]) |
+| Screen | boot console visible, then WLED backlight off (true off) |
 | Boot | `systemctl is-system-running` = running, 0 failed units |
 
-Out of scope (no mainline support or not needed): Wi-Fi, modem, camera, DSI
-panel, GPU, suspend/PM.
+Out of scope / blocked: Wi-Fi (WCN3990; GLINK edges register but the remote
+side never opens IPCRTR, so no QRTR/WLFW service), modem, camera, DSI panel,
+GPU, suspend/PM.
 
 ## Flash
 
@@ -72,8 +75,8 @@ EOF
 
 ```
 artifacts/           ready-to-flash boot.img + rootfs payload + build inputs
-  odessa-6.12-boot.img   61.65 MiB, sha256 29353394...731f15
-  rootfs-install.tar.gz  42.19 MiB rootfs payload (used by the self-install)
+  odessa-6.12-boot.img   62.27 MiB, sha256 29353394...731f15
+  rootfs-install.tar.gz  42.14 MiB rootfs payload (used by the self-install)
   Image-6.12.gz          kernel used in the FIT
   odessa-6.12.dtb        ABL-merged DTB used in the FIT
   u-boot.bin             U-Boot chainloader (boot.img "kernel")

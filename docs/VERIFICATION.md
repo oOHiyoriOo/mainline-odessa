@@ -7,8 +7,8 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 64,675,840 B (61.65 MiB) | `f0f11cc698597fe08edad6d170c90dcd87ba05fef142f78a6433dd1f1eef72c0` |
-| `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.19 MiB) | `ba4324f1efe8f2884c973a3aa8dd301170efd3dcfe1dfedd4cfd2f3b4418dfab` |
+| `artifacts/odessa-6.12-boot.img` | 64,675,840 B (62.27 MiB) | `2fb98a100e7e0de9146b37b00dd1fcae83cdacc60cdd4a0f9037f4448310c81f` |
+| `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
 | `artifacts/Image-6.12.gz` | 14,592,555 B | `48a3972c...1ad4fe` (kernel build) |
 | `artifacts/odessa-6.12.dtb` | 587,152 B | ABL-merged DTB (fix35) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
@@ -96,3 +96,17 @@ driver starts with `wled->brightness = 0`, so a direct write of 0 does not call
 `wled_module_enable(false)`. `odessa-screen-off.service` therefore writes
 `bl_power=0`, `brightness=2048`, waits 200 ms and writes `0` before clearing
 `/dev/fb0`.
+
+
+## Battery guard (2026-11-07)
+
+```
+QG SDAM offset 0x47                 100 (%)
+ADC5 in_voltage_vbat_sns_input      4,455,426 uV (USB attached)
+charge_enable=0 / status 0x1006     7 (DISABLE_CHARGE)
+charge_enable=1 / status 0x1006     4 (TAPER_CHARGE)
+battery-guard.timer                 active, 30 s period
+```
+
+The guard stops at >=60% and resumes at <=40%; the voltage fallback uses
+4.00 V / 3.65 V if the QG value is stale.

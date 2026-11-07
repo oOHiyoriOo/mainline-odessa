@@ -153,14 +153,35 @@ EOF
 # --- battery charge guard (hysteresis 55/60) -------------------------------
 cat > "$R/usr/local/sbin/battery-guard.sh" <<'EOF'
 #!/bin/sh
-# Keep the battery between ~55% and ~60% while on USB power.
-CAP=/sys/class/power_supply/battery/capacity
-CHG=/sys/class/power_supply/battery/battery_charging_enabled
-[ -r "$CAP" ] || exit 0
-c=$(cat "$CAP")
+# Keep the battery between 40% and 60% while on USB power.
+#
+# Capacity comes from the QG SDAM block (offset 0x47) via mainline nvmem;
+# the fallback is the ADC5 vbat_sns channel. Charging is controlled by the
+# odessa-chg driver (PM6150 CHARGING_ENABLE_CMD, 0x1042 bit 0).
+CHG=$(find /sys/devices -name charge_enable 2>/dev/null | head -1)
 [ -w "$CHG" ] || exit 0
-if [ "$c" -ge 60 ]; then echo 0 > "$CHG"; fi
-if [ "$c" -le 55 ]; then echo 1 > "$CHG"; fi
+N=/sys/bus/nvmem/devices/spmi_sdam0/nvmem
+V=/sys/bus/iio/devices/iio:device0/in_voltage_vbat_sns_input
+cap=""
+[ -r "$N" ] && cap=$(dd if="$N" bs=1 skip=71 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
+v=""
+[ -r "$V" ] && v=$(cat "$V" 2>/dev/null)
+if [ -n "$cap" ] && [ "$cap" -ge 0 ] && [ "$cap" -le 100 ]; then
+    # stale QG value: 100% but the cell is clearly below full
+    if [ "$cap" -eq 100 ] && [ -n "$v" ] && [ "$v" -lt 3900000 ]; then
+        cap=""
+    fi
+fi
+old=$(cat "$CHG" 2>/dev/null)
+if [ -n "$cap" ]; then
+    if [ "$cap" -ge 60 ]; then echo 0 > "$CHG"; fi
+    if [ "$cap" -le 40 ]; then echo 1 > "$CHG"; fi
+elif [ -n "$v" ]; then
+    if [ "$v" -ge 4000000 ]; then echo 0 > "$CHG"; fi
+    if [ "$v" -le 3650000 ]; then echo 1 > "$CHG"; fi
+fi
+new=$(cat "$CHG" 2>/dev/null)
+[ "$old" != "$new" ] && echo "battery-guard: cap=${cap:-?} v=${v:-?} charge=$new" > /dev/kmsg
 EOF
 chmod 755 "$R/usr/local/sbin/battery-guard.sh"
 

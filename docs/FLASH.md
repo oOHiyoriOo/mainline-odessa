@@ -36,7 +36,7 @@ fastboot set_active b
 fastboot reboot
 ```
 
-The image is 61.65 MiB and fits the 64 MiB boot partition (2.43 MB reserve).
+The image is 62.27 MiB and fits the 64 MiB boot partition (2.43 MB reserve).
 
 ## First boot
 

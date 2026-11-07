@@ -24,11 +24,29 @@ The rootfs has no `udev` package; `/dev` is devtmpfs. Device nodes required by
 the boot path (UFS, console) are created by the kernel. Tools that rely on
 udev events (hotplug, persistent names) are unavailable.
 
+## Wi-Fi (blocked)
+
+WCN3990 is not usable yet. The kernel has ATH10K/ATH10K_SNOC, QRTR and the
+GLINK transport built in, and three GLINK edges (modem/adsp/cdsp) register,
+but the remote side never opens an `IPCRTR` channel. Without a QRTR endpoint
+`ath10k_qmi` waits 30 s and fails; there is no WLFW service. SMEM IDs
+(478/479/480), mailbox offset 12 and IRQ 449 match the vendor DTS, so this is
+a modem firmware/PD handshake issue, not a device-tree fix. It requires a
+modem PD/QMI port or a modem restart.
+
 ## Network
 
 Only the point-to-point USB link exists. There is no default route, no DHCP
 client, no DNS resolver and no NAT. `apt` can only work if the host forwards
 traffic (host-side `ip_forward` + masquerade) — not part of this image.
+
+## Battery guard
+
+`battery-guard.timer` keeps the pack between 40% and 60%: it stops charging at
+>=60% and resumes at <=40% via the PM6150 `CHARGING_ENABLE_CMD` bit. Capacity
+comes from the QG SDAM (offset 0x47) through nvmem, with an ADC5
+`vbat_sns` fallback (4.00 V / 3.65 V). In idle the device runs from the cable
+without loading the battery, so it stays at the current SoC.
 
 ## Clock
 
