@@ -1,0 +1,58 @@
+# Odessa (Moto G9 Plus, SM6150) U-Boot chainload config.
+# Base: U-Boot v2026.10 qcom_defconfig (QCS615 = SM6150 family).
+# One-level include only: the nested qcom_qcs615_defconfig include is
+# avoided deliberately; its odessa-relevant lines are inlined below.
+
+#include "qcom_defconfig"
+
+CONFIG_ARM=y
+
+# The early-debug UART requires DEBUG_UART_CLOCK to be an integer
+# multiple of BAUDRATE*UART_OVERSAMPLING. The odessa UART clock is not
+# (19.2 MHz vs 115200*32), so keep the early-debug UART off. The normal
+# GENI serial driver still binds uart6; the display is the primary console.
+# CONFIG_DEBUG_UART is not set
+# CONFIG_DEBUG_UART_MSM_GENI is not set
+
+CONFIG_DEFAULT_DEVICE_TREE="qcom/qcs615-odessa"
+
+# ABL loads the payload at 0x80000000; the ARM64 Image header then has
+# text_offset = TEXT_BASE - 0x80000000 = 0.
+CONFIG_TEXT_BASE=0x80000000
+
+CONFIG_BOOTCOMMAND="for addr in ${prevbl_initrd_start_addr} 0x81000000 0x82000000 0x83000000 0x84000000 0x85000000 0x85367000 0x86000000 0x87000000; do if iminfo $addr; then bootm $addr; fi; done"
+CONFIG_BOOTDELAY=0
+
+# Do not let U-Boot start the watchdog during the first RAM-only test.
+# CONFIG_WATCHDOG_AUTOSTART is not set
+
+# Video console via simple-framebuffer at 0x9c000000.
+CONFIG_VIDEO=y
+CONFIG_VIDEO_SIMPLE=y
+CONFIG_CONSOLE_MUX=y
+CONFIG_SYS_CONSOLE_IS_IN_ENV=y
+
+# Phone-style env: stdout=serial,vidconsole, usbacm gadget, bootmenu.
+CONFIG_ENV_DEFAULT_ENV_TEXT_FILE="board/qualcomm/odessa.env"
+CONFIG_BOOT_RETRY=y
+CONFIG_BOOT_RETRY_TIME=1
+CONFIG_RETRY_BOOTCMD=y
+CONFIG_CMD_PAUSE=y
+
+# USB gadget fallback (DWC3 + QUSB2 + ACM).
+CONFIG_USB_GADGET=y
+CONFIG_USB_DWC3=y
+CONFIG_USB_DWC3_GADGET=y
+CONFIG_USB_DWC3_GENERIC=y
+CONFIG_USB_FUNCTION_ACM=y
+
+# Console observability: record output and allow fastboot oem console.
+CONFIG_PANIC_HANG=y
+CONFIG_CONSOLE_RECORD=y
+CONFIG_CONSOLE_RECORD_INIT_F=y
+CONFIG_CONSOLE_RECORD_OUT_SIZE=0x6000
+CONFIG_FASTBOOT_CMD_OEM_CONSOLE=y
+
+# The odessa UART pinctrl is not usable (GPIO44/45 lack a QUP mux).
+# Do not fail the boot when no serial console is available.
+# CONFIG_REQUIRE_SERIAL_CONSOLE is not set

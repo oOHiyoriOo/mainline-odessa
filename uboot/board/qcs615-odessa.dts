@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Moto G9 Plus (odessa), SM6150/SDMMAGPIE.
+ * U-Boot board DTS for the chainload test.
+ *
+ * Base: U-Boot v2026.10 dts/upstream/src/arm64/qcom/talos.dtsi
+ * (QCS615 SoC, compatible "qcom,sm6150").
+ *
+ * Primary console: simple-framebuffer at 0x9c000000 (1080x2400,
+ * a8r8g8b8). The stock bootloader has already initialized the panel.
+ *
+ * UART note: the odessa stock UART is at 0xa88000 on GPIO44/45 with
+ * the vendor function "qup12". U-Boot's pinctrl-qcs615 has no QUP mux
+ * for GPIO44/45 (they are qspi), so the UART is not usable for console.
+ * uart6 is still enabled as a GENI debug UART for the driver's early
+ * code path, but without pinctrl it will not drive the odessa pins.
+ *
+ * USB: talos.dtsi usb_1 is "qcom,snps-dwc3" (flat-DT), usb_1_hsphy is
+ * "qcom,qcs615-qusb2-phy". Peripheral/high-speed is enough for the
+ * usbacm console gadget.
+ */
+
+/dts-v1/;
+
+#include "talos.dtsi"
+
+/ {
+	model = "Moto G9 Plus (odessa)";
+	compatible = "motorola,odessa", "qcom,sm6150";
+	qcom,msm-id = <0x16d 0x0>;
+	qcom,board-id = <0x49 0xc000>;
+
+	aliases {
+		serial0 = &uart6;
+	};
+
+	/*
+	 * talos.dtsi references these board-level fixed clocks; the QCS615
+	 * reference board (qcs615-ride.dts) defines them here.
+	 */
+	clocks {
+		sleep_clk: sleep-clk {
+			compatible = "fixed-clock";
+			clock-frequency = <32000>;
+			#clock-cells = <0>;
+		};
+
+		xo_board_clk: xo-board-clk {
+			compatible = "fixed-clock";
+			clock-frequency = <38400000>;
+			#clock-cells = <0>;
+		};
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		framebuffer@9c000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x9c000000 0x0 (1080 * 2400 * 4)>;
+			width = <1080>;
+			height = <2400>;
+			stride = <(1080 * 4)>;
+			format = "a8r8g8b8";
+		};
+	};
+};
+
+&{/reserved-memory} {
+	cont_splash: cont-splash@9c000000 {
+		reg = <0x0 0x9c000000 0x0 0x1700000>;
+		no-map;
+	};
+};
+
+&qupv3_id_1 {
+	status = "okay";
+};
+
+/* Keep uart0 (QCS615 dev-board debug UART at 0x880000) out of the way. */
+&uart0 {
+	status = "disabled";
+};
+
+/*
+ * uart6 is the odessa UART at 0xa88000. U-Boot's GENI serial driver only
+ * probes "qcom,geni-debug-uart" (it deliberately returns -ENOENT for
+ * "qcom,geni-uart"). The pinctrl is removed because qcs615 TLMM has no
+ * QUP mux for GPIO44/45; the display remains the primary console.
+ */
+&uart6 {
+	compatible = "qcom,geni-debug-uart";
+	status = "okay";
+	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
+};
+
+&usb_1_hsphy {
+	status = "okay";
+};
+
+&usb_1 {
+	status = "okay";
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
+};

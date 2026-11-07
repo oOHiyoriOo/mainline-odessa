@@ -1,0 +1,53 @@
+/dts-v1/;
+
+/ {
+	description = "odessa mainline 6.12 release (systemd, PDC mainline, 31 RPMh regulators, UFS fixed rails)";
+	#address-cells = <2>;
+
+	images {
+		kernel {
+			description = "Linux 6.12 odessa";
+			data = /incbin/("@KERNEL@");
+			type = "kernel";
+			arch = "arm64";
+			os = "linux";
+			compression = "gzip";
+			load = <0x0 0x90000000>;
+			entry = <0x0 0x90000000>;
+			hash-1 { algo = "sha256"; };
+		};
+
+		fdt {
+			description = "odessa ABL DTB release";
+			data = /incbin/("@DTB@");
+			type = "flat_dt";
+			arch = "arm64";
+			compression = "none";
+			load = <0x0 0x8F000000>;
+			hash-1 { algo = "sha256"; };
+		};
+
+		ramdisk {
+			description = "odessa initramfs";
+			data = /incbin/("@INITRAMFS@");
+			type = "ramdisk";
+			arch = "arm64";
+			os = "linux";
+			compression = "gzip";
+			load = <0x0 0xA0000000>;
+			hash-1 { algo = "sha256"; };
+		};
+	};
+
+	configurations {
+		default = "conf-1";
+
+		conf-1 {
+			description = "odessa 6.12 ABL DTB release";
+			kernel = "kernel";
+			fdt = "fdt";
+			ramdisk = "ramdisk";
+			bootargs = "console=tty0 loglevel=4 fbcon=font:TER16x32 pstore.backend=ramoops clk_ignore_unused pd_ignore_unused panic=0 keep_bootcon init=/init regulator_ignore_unused odessa.boot=ubuntu";
+		};
+	};
+};

@@ -1,0 +1,223 @@
+#!/bin/sh
+# odessa USB-gadget test initramfs init (RAM boot only, no persistence).
+# BusyBox ash. Requires kernel with DEVTMPFS (our 4.14.190 build).
+
+export PATH=/bin:/sbin
+export HOME=/root
+
+say() {
+    echo "[init] $*"
+    echo "<3>[init] $*" > /dev/kmsg 2>/dev/null
+    printf '%s\n' "[init] $*" > /dev/pmsg0 2>/dev/null
+}
+
+# --- core filesystems -------------------------------------------------------
+mkdir -p /proc /sys /dev /tmp /run /root /etc /var/lib/misc /var/log
+mount -t proc   proc   /proc
+mount -t sysfs  sysfs  /sys
+mount -t tmpfs  tmpfs  /tmp
+
+if ! mount -t devtmpfs devtmpfs /dev 2>/dev/null; then
+    say "devtmpfs unavailable, creating static nodes"
+    [ -c /dev/console ] || mknod /dev/console c 5 1
+    [ -c /dev/null ]    || mknod /dev/null    c 1 3
+    [ -c /dev/zero ]    || mknod /dev/zero    c 1 5
+    [ -c /dev/tty ]     || mknod /dev/tty     c 5 0
+    [ -c /dev/ptmx ]    || mknod /dev/ptmx    c 5 2
+    [ -c /dev/urandom ] || mknod /dev/urandom c 1 9
+fi
+
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts 2>/dev/null || say "devpts mount failed"
+mount -t tmpfs  tmpfs  /dev/shm
+
+# --- pstore: keep the previous boot's log readable over ssh -----------------
+mkdir -p /sys/fs/pstore
+if mount -t pstore pstore /sys/fs/pstore 2>/dev/null; then
+    for f in /sys/fs/pstore/*; do
+        [ -f "$f" ] || continue
+        cp "$f" "/tmp/pstore-$(basename "$f")" 2>/dev/null
+    done
+    say "pstore: $(ls /tmp/pstore-* 2>/dev/null | wc -l) file(s) copied to /tmp"
+else
+    say "pstore mount failed"
+fi
+
+hostname odessa 2>/dev/null
+
+# --- USB gadget (NCM) -------------------------------------------------------
+if ! mount -t configfs configfs /sys/kernel/config 2>/dev/null; then
+    say "configfs mount failed"
+fi
+
+G=/sys/kernel/config/usb_gadget/g1
+mkdir -p "$G"
+cd "$G" || say "no gadget dir"
+
+echo 0x1d6b > idVendor
+echo 0x0104 > idProduct
+echo 0x0100 > bcdDevice
+echo 0x0200 > bcdUSB
+mkdir -p strings/0x409
+echo "0123456789"        > strings/0x409/serialnumber
+echo "odessa"            > strings/0x409/manufacturer
+echo "odessa usb gadget" > strings/0x409/product
+mkdir -p configs/c.1/strings/0x409
+echo "ncm"  > configs/c.1/strings/0x409/configuration
+echo 250    > configs/c.1/MaxPower
+
+mkdir -p functions/ncm.usb0
+[ -e configs/c.1/ncm.usb0 ] || ln -s functions/ncm.usb0 configs/c.1/
+
+UDC=$(ls /sys/class/udc 2>/dev/null | head -n1)
+if [ -n "$UDC" ]; then
+    echo "$UDC" > UDC && say "bound UDC $UDC" || say "UDC bind failed ($UDC)"
+else
+    say "no UDC found"
+fi
+
+# --- network ---------------------------------------------------------------
+# NOTE: dev_addr/host_addr in this 4.14 tree are only writable when bound==true
+# and refcnt==0 -> unreachable via configfs (-EBUSY). Device MAC is set on the
+# netdev instead; the host-side MAC stays random (DHCP handles naming/IP).
+sleep 2
+ip link set usb0 address a6:00:00:00:00:02 2>/dev/null
+ip link set usb0 up     2>/dev/null || say "usb0 up failed"
+ip addr add 172.16.42.1/24 dev usb0 2>/dev/null || say "usb0 addr failed"
+ip -o addr show usb0
+
+cat > /etc/udhcpd.conf <<'EOF'
+start 172.16.42.10
+end 172.16.42.20
+interface usb0
+option subnet 255.255.255.0
+option router 172.16.42.1
+option dns 172.16.42.1
+lease_file /var/lib/misc/udhcpd.leases
+EOF
+udhcpd /etc/udhcpd.conf && say "udhcpd started" || say "udhcpd failed"
+
+# --- SSH (dropbear, key-only) ----------------------------------------------
+mkdir -p /etc/dropbear /root/.ssh
+chmod 700 /etc/dropbear /root/.ssh
+chmod 600 /root/.ssh/authorized_keys 2>/dev/null
+if [ ! -f /etc/dropbear/dropbear_ed25519_host_key ]; then
+    dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key >/dev/null 2>&1 \
+        && say "host key generated" || say "dropbearkey failed"
+fi
+dropbear -p 22 -r /etc/dropbear/dropbear_ed25519_host_key \
+    && say "dropbear started on :22" || say "dropbear failed"
+
+# --- telnet fallback -------------------------------------------------------
+telnetd -l /bin/sh -p 23 -f /etc/issue 2>/dev/null || telnetd -l /bin/sh -p 23
+say "telnetd started on :23"
+
+say "init done"
+
+# --- self-install: if the target has no ready rootfs, unpack the embedded one --
+# The release boot image carries rootfs.tar.gz; the bootloader refuses
+# fastboot writes to userdata, but Linux may write it. This makes the image
+# self-contained: flash boot_b, reboot, done.
+if grep -q 'odessa.boot=ubuntu' /proc/cmdline 2>/dev/null; then
+    mkdir -p /mnt
+    if [ -f /rootfs.tar.gz ]; then
+        READY=0
+        if mount -t ext4 -o ro /dev/sdb24 /mnt 2>/dev/null; then
+            [ -e /mnt/etc/odessa-ready ] && READY=1
+            umount /mnt
+        fi
+        if [ "$READY" -eq 0 ]; then
+            say "self-install: writing embedded rootfs to /dev/sdb24"
+            if /sbin/mke2fs -q -t ext4 -F -O ^orphan_file -L odessa-root /dev/sdb24 && \
+               mount -t ext4 /dev/sdb24 /mnt; then
+                if gunzip -c /rootfs.tar.gz | tar -x -C /mnt -f -; then
+                    say "self-install: rootfs written"
+                else
+                    say "self-install: tar failed"
+                fi
+                umount /mnt
+            else
+                say "self-install: mkfs/mount failed"
+            fi
+        fi
+    fi
+fi
+
+# --- optional switch to the on-disk Ubuntu rootfs ---------------------------
+# Only when the cmdline asks for it AND the rootfs is marked ready.
+#   odessa.boot=ubuntu
+if grep -q 'odessa.boot=ubuntu' /proc/cmdline 2>/dev/null; then
+    mkdir -p /mnt
+    # try userdata first (installer layout), then super (fastboot layout)
+    ROOTDEV=""
+    for cand in /dev/sdb24 /dev/sdb23; do
+        [ -b "$cand" ] || continue
+        if mount -t ext4 -o ro "$cand" /mnt 2>/dev/null; then
+            # /sbin/init may be an absolute symlink (e.g. systemd: -> /lib/systemd/systemd);
+            # test -x would resolve that inside the initramfs and fail. Accept either a
+            # real executable, or the usual usrmerge/systemd targets inside the mount.
+            if [ -e /mnt/etc/odessa-ready ] && \
+               { [ -x /mnt/sbin/init ] || [ -x /mnt/lib/systemd/systemd ] || [ -x /mnt/usr/lib/systemd/systemd ]; }; then
+                ROOTDEV="$cand"
+                break
+            fi
+            umount /mnt
+        fi
+    done
+    if [ -n "$ROOTDEV" ]; then
+        say "switching root to $ROOTDEV (ubuntu)"
+        umount /mnt
+        mount -t ext4 -o rw,noatime "$ROOTDEV" /mnt || { say "rw remount failed"; }
+        killall dropbear telnetd udhcpd 2>/dev/null
+        umount /dev/pts /dev/shm /tmp 2>/dev/null
+        exec switch_root /mnt /sbin/init
+    fi
+    say "no ready rootfs on /dev/sdb24 or /dev/sdb23"
+fi
+
+# --- hardware status summary (visible on tty0 and in pstore) ---------------
+mkdir -p /sys/kernel/debug
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+say "bound rpmh: $(ls /sys/bus/platform/drivers/rpmh 2>/dev/null | grep -vE '^(bind|unbind|uevent|module)$' | head -4)"
+say "bound rpmh-reg: $(ls /sys/bus/platform/drivers/qcom-rpmh-regulator 2>/dev/null | grep -vE '^(bind|unbind|uevent|module)$' | head -4)"
+say "dmesg rpmh:"
+dmesg | grep -iE "cmd-db|rpmh|rsc|tcs|dwc3|qusb|udc|usb|phy" | tail -30 | while read -r l; do say "  $l"; done
+say "gcc: $(ls /sys/bus/platform/drivers/gcc-sdmmagpie 2>/dev/null | grep -vE '^(bind|unbind|uevent|module)$' | head -4)"
+say "dmesg gcc:"
+dmesg | grep -iE "gcc|clk" | tail -12 | while read -r l; do say "  $l"; done
+say "VERDICT gcc_bound=$(ls /sys/bus/platform/drivers/gcc-sdmmagpie 2>/dev/null | grep -c '^100000') usb_clk=$(grep -c 'gcc_usb30_prim_master_clk' /sys/kernel/debug/clk/clk_summary 2>/dev/null)"
+say "VERDICT $(grep -m1 'gpll0' /sys/kernel/debug/clk/clk_summary 2>/dev/null | tr -s ' ')"
+say "clocks (usb/pll/tcxo):"
+grep -E "gcc_usb|gpll|bi_tcxo" /sys/kernel/debug/clk/clk_summary 2>/dev/null | head -20 | while read -r l; do say "  $l"; done
+say "usb: dev=$(ls -d /sys/bus/platform/devices/a6f8800.usb 2>/dev/null | wc -l) wrap=$(ls /sys/bus/platform/drivers/dwc3-qcom 2>/dev/null | grep -c '^a6f8800.usb') core=$(ls /sys/bus/platform/drivers/dwc3 2>/dev/null | grep -c '^a600000.dwc3') phy=$(ls /sys/bus/platform/drivers/qcom-qusb2-phy 2>/dev/null | grep -c '^88e2000.qusb')"
+say "usb deferred:"
+grep -E "a6f8800|a600000|88e2000" /sys/kernel/debug/devices_deferred 2>/dev/null | while read -r l; do say "  $l"; done
+say "deferred count: $(wc -l < /sys/kernel/debug/devices_deferred 2>/dev/null)"
+say "dmesg usb:"
+dmesg | grep -iE "dwc3|qusb|udc" | tail -25 | while read -r l; do say "  $l"; done
+say "deferred:"
+i=0
+while read -r l; do
+    say "  $l"
+    i=$((i+1))
+    [ "$i" -ge 12 ] && break
+done < /sys/kernel/debug/devices_deferred
+say "regulators:"
+for r in /sys/class/regulator/regulator.*; do
+    [ -d "$r" ] || continue
+    n=$(cat "$r/name" 2>/dev/null)
+    st=$(cat "$r/state" 2>/dev/null)
+    uv=$(cat "$r/microvolts" 2>/dev/null)
+    say "  $n state=$st uV=$uv"
+done
+say "udc: $(ls /sys/class/udc 2>/dev/null | head -3)"
+say "cmd-db: $(ls /sys/bus/platform/devices/ 2>/dev/null | grep -i 'cmd-db')"
+say "rsc: $(ls /sys/bus/platform/devices/ 2>/dev/null | grep -i 'rsc')"
+say "summary done"
+printf '%s\n' "[init] PMSG-END" > /dev/pmsg0 2>/dev/null
+
+# PID 1: reap children, keep running
+while :; do
+    sleep 3600 &
+    wait $!
+done

@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Odessa (Moto G9 Plus, SM6150) U-Boot memory override.
+ * Confirmed from the ABL-passed DTB:
+ *   /proc/device-tree/memory/reg =
+ *     <0x0 0x80000000 0x0 0x80000000>,
+ *     <0x0 0x100000000 0x0 0x7dd00000>
+ * The QCS615 reference board DTSI uses a placeholder memory@80000000;
+ * this overlay replaces it for odessa.
+ */
+
+/ {
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x80000000>,
+		      <0x1 0x0 0x0 0x7dd00000>;
+	};
+};

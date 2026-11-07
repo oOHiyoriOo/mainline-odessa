@@ -1,0 +1,23 @@
+diff -Naur a/drivers/usb/gadget/f_acm.c b/drivers/usb/gadget/f_acm.c
+--- a/drivers/usb/gadget/f_acm.c	2026-11-07 11:57:46.546672913 +0000
++++ b/drivers/usb/gadget/f_acm.c	2026-11-07 11:57:46.547876396 +0000
+@@ -651,13 +651,12 @@
+ 	else
+ 		return -ENODEV;
+ 
+-	while (!acm_connected(dev)) {
+-		if (ctrlc())
+-			return -ECANCELED;
+-
+-		schedule();
+-	}
+-
++	/*
++	 * odessa: do not block the boot until a host opens the ACM port.
++	 * The UDC is already initialized here (clocks/PHY on); this is the
++	 * handoff state Linux needs. Console output still goes to serial
++	 * and vidconsole.
++	 */
+ 	return 0;
+ }
+ 

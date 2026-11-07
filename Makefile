@@ -1,0 +1,52 @@
+# odessa-linux-6.12 — reproducible build targets
+#
+#   make check        verify the shipped artifacts against SHA256SUMS
+#   make initramfs    build initramfs from artifacts/rootfs-install.tar.gz
+#   make fit          pack kernel + DTB + initramfs into a FIT image
+#   make bootimg      wrap U-Boot + FIT + stock DTB into a boot.img
+#   make rootfs-tar   unpack the payload to build/rootfs.tar
+#   make rootfs-img   build a 2 GiB ext4 image from the payload (needs sudo)
+#   make simg         convert the ext4 image to an Android sparse image
+#
+SHELL := /bin/sh
+REPO  := $(CURDIR)
+JOBS  ?= 12
+AUTHKEY ?= $(REPO)/config/authorized_keys.pub
+export AUTHKEY JOBS
+
+.PHONY: all check initramfs fit bootimg rootfs-tar rootfs-tree rootfs-img simg clean
+
+all: bootimg rootfs-img simg
+
+check:
+	@cd artifacts && sha256sum -c SHA256SUMS
+	@echo "artifacts OK"
+
+initramfs:
+	./initramfs/build-initramfs.sh
+
+fit: initramfs
+	./kernel/build-fit.sh
+
+bootimg: fit
+	./uboot/pack-bootimg.sh
+
+rootfs-tar:
+	./rootfs/unpack-payload.sh
+
+rootfs-tree:
+	./rootfs/unpack-payload.sh --extract
+
+rootfs-img: rootfs-tree
+	@command -v mke2fs >/dev/null || { echo "mke2fs missing (e2fsprogs)" >&2; exit 1; }
+	sudo rm -f build/rootfs.img
+	truncate -s 2G build/rootfs.img
+	sudo mke2fs -q -t ext4 -O ^orphan_file -L odessa-root -d build/rootfs-tree build/rootfs.img
+	sudo e2fsck -fy build/rootfs.img >/dev/null || true
+	@echo "build/rootfs.img ready"
+
+simg: rootfs-img
+	python3 rootfs/make-simg.py build/rootfs.img build/rootfs.simg
+
+clean:
+	rm -rf build
