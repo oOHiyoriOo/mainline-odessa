@@ -7,8 +7,8 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 64,675,840 B (61.68 MiB) | `293533942759a466b0193645bb74e989be78e59988508b9dd2fce54744731f15` |
-| `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.19 MiB) | `0d000d5df6a58bed5c3d94079f111b9545f6d24b49f16b96bf09b52e9fcaee07` |
+| `artifacts/odessa-6.12-boot.img` | 64,675,840 B (61.65 MiB) | `f0f11cc698597fe08edad6d170c90dcd87ba05fef142f78a6433dd1f1eef72c0` |
+| `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.19 MiB) | `ba4324f1efe8f2884c973a3aa8dd301170efd3dcfe1dfedd4cfd2f3b4418dfab` |
 | `artifacts/Image-6.12.gz` | 14,592,555 B | `48a3972c...1ad4fe` (kernel build) |
 | `artifacts/odessa-6.12.dtb` | 587,152 B | ABL-merged DTB (fix35) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
@@ -77,3 +77,22 @@ expanded SHA256 equals the raw image SHA256.
 - `gpio-regulator: deferred probe pending` (unused regulator stubs)
 
 None of these produce a failed systemd unit or affect storage, USB or SSH.
+
+
+## Backlight off (WLED, 2026-11-07)
+
+The release kernel enables `CONFIG_BACKLIGHT_QCOM_WLED=y`; the runtime DTS uses
+the mainline binding `qcom,pm6150l-wled` (strings 0-2, 25 mA, OVP 23500 mV,
+boost 1050 mA, CABC, default brightness 2048).
+
+```
+/sys/class/backlight/backlight   -> ...pm6150l@5:qcom,wled@d800/backlight/backlight
+brightness / max_brightness      0 / 4095
+actual_brightness                0
+```
+
+The panel glow disappears only after a non-zero -> zero transition: the
+driver starts with `wled->brightness = 0`, so a direct write of 0 does not call
+`wled_module_enable(false)`. `odessa-screen-off.service` therefore writes
+`bl_power=0`, `brightness=2048`, waits 200 ms and writes `0` before clearing
+`/dev/fb0`.

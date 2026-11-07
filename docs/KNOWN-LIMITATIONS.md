@@ -43,7 +43,9 @@ keyboard and no password set up, so SSH is the practical access path.
 ## Display
 
 The bootloader framebuffer is used as a simple framebuffer console. There is
-no mainline DSI/panel driver, so no graphical session.
+no mainline DSI/panel driver, so no graphical session. The PM6150L WLED
+backlight is driven by mainline `qcom-wled`; `odessa-screen-off.service`
+switches it off (non-zero -> zero transition) and masks `getty@tty1`.
 
 ## Out of scope
 

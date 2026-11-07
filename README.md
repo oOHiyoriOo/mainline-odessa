@@ -72,7 +72,7 @@ EOF
 
 ```
 artifacts/           ready-to-flash boot.img + rootfs payload + build inputs
-  odessa-6.12-boot.img   61.68 MiB, sha256 29353394...731f15
+  odessa-6.12-boot.img   61.65 MiB, sha256 29353394...731f15
   rootfs-install.tar.gz  42.19 MiB rootfs payload (used by the self-install)
   Image-6.12.gz          kernel used in the FIT
   odessa-6.12.dtb        ABL-merged DTB used in the FIT

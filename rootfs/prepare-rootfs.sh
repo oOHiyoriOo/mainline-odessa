@@ -191,10 +191,24 @@ EOF
 # no keyboard is attached and its login prompt would redraw the screen.
 cat > "$R/usr/local/sbin/odessa-screen-off.sh" <<'EOF'
 #!/bin/sh
-# Run once after boot: silence console output and clear the framebuffer.
+# Run once after boot: silence console output, turn the panel backlight off
+# and clear the framebuffer.
 echo 1 > /proc/sys/kernel/printk 2>/dev/null || true
 systemctl log-level warning 2>/dev/null || true
 systemctl log-target journal 2>/dev/null || true
+
+# WLED quirk: the driver starts with brightness=0 while the bootloader may
+# have the module enabled. Writing 0 directly does not call module_enable();
+# force a non-zero -> zero transition.
+B=/sys/class/backlight/backlight
+if [ -w "$B/brightness" ]; then
+    echo 0 > "$B/bl_power" 2>/dev/null || true
+    echo 2048 > "$B/brightness" 2>/dev/null || true
+    sleep 0.2
+    echo 0 > "$B/brightness" 2>/dev/null || true
+fi
+
+# fallback: black out the simple-framebuffer scanout
 VS=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null) || exit 0
 W=${VS%,*}; H=${VS#*,}
 BPP=$(cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null || echo 32)
