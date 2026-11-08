@@ -7,13 +7,43 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 64,675,840 B (62.27 MiB) | `2fb98a100e7e0de9146b37b00dd1fcae83cdacc60cdd4a0f9037f4448310c81f` |
+| `artifacts/odessa-6.12-boot.img` | 65,953,792 B (62.90 MiB) | `af907b4757c1d1c18c12e9483effef5cf3e2dd3d26b4d3b2087dacba1562322e` |
 | `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
-| `artifacts/Image-6.12.gz` | 14,592,555 B | `48a3972c...1ad4fe` (kernel build) |
-| `artifacts/odessa-6.12.dtb` | 587,152 B | ABL-merged DTB (fix35) |
+| `artifacts/Image-6.12.gz` | 15,870,015 B | `e318f94e2bb8cb8de46e884cd2fa51b0650ba45df29a9107e11097b3a51c0620` |
+| `artifacts/odessa-6.12.dtb` | 587,494 B | ABL-merged DTB (fix35) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
 
-The boot image reserves 2,433,024 bytes under the 64 MiB `boot_b` limit.
+The boot image reserves 1,155,072 bytes under the 64 MiB `boot_b` limit.
+
+Kernel build 2026-11-08 (`6.12.0 #1 SMP PREEMPT Sun Nov  8 01:53:05 UTC 2026`)
+adds the container prerequisites that the 2026-11-07 build only had as
+modules: `NF_TABLES`, `NF_NAT`, `NFT_*` (nat/masq/redir/ct/reject/compat),
+iptables/ip6tables compatibility, `BRIDGE`, `BRIDGE_NETFILTER`, `VETH`,
+`OVERLAY_FS`, and `IPV6` (needed because `BRIDGE` depends on
+`IPV6 || IPV6=n`); `NETFILTER_ADVANCED=y` is required or `olddefconfig`
+silently keeps the netfilter options at `=m`.
+
+## Containers (2026-11-08)
+
+Boot image flashed to `boot_b`, `fastboot set_active b`, cold boot. Verified on
+the device:
+
+```
+uname -r                         6.12.0
+/proc/filesystems                overlay
+docker info                      Server 29.9.3, Storage Driver overlayfs,
+                                 Cgroup Driver systemd, Cgroup Version 2
+ip -brief addr show docker0      docker0 UP 172.17.0.1/16
+/proc/sys/net/ipv4/ip_forward    1
+/proc/sys/net/bridge/bridge-nf-call-iptables  1
+iptables -t nat -S               -A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE
+iptables -S DOCKER               -A DOCKER ! -i docker0 -o docker0 -j DROP
+dmesg                            "Bridge firewalling registered"
+```
+
+With the previous image `mount -t overlay` failed with `ENODEV` (overlay was a
+module and the kernel image ships none). With the `vfs` storage driver and
+`bridge: none` Docker could still start, but had no container network.
 
 ## End-to-end run on empty userdata
 
