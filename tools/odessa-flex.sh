@@ -72,6 +72,17 @@ row "usb"      "${usb:-no address} ${D}(NCM gadget)${R}"
 [ -n "${defrt:-}" ] && row "gateway" "default via ${defrt} (host NAT)"
 row "battery"  "${batt}"
 row "display"  "${disp}"
+led_s=""
+for l in /sys/class/leds/*; do
+    [ -e "$l/trigger" ] || continue
+    n=$(basename "$l")
+    t=$(grep -o '\[[^]]*\]' "$l/trigger" 2>/dev/null | tr -d '[]')
+    [ -z "$t" ] && t=off
+    [ -n "$led_s" ] && led_s="$led_s "
+    led_s="${led_s}${n}:${t}"
+done
+[ -z "$led_s" ] && led_s="none"
+row "led"      "${led_s}"
 row "docker"   "${docker_s}"
 bar
 printf '   %s%s%s\n' "$D" "no Android, no vendor kernel, no boot-path blobs" "$R"
