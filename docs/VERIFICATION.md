@@ -7,15 +7,15 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 65,974,272 B (62.92 MiB) | `1952a73690bb35b73b8fc07ad4d9790ccb3c598464c0ff20a06ef6717394df46` |
+| `artifacts/odessa-6.12-boot.img` | 65,974,272 B (62.92 MiB) | `6ca154f92bd8c4219ccc7b9a979fdc2eff0253cbc07a0de2b6080dcd3e9f29e8` |
 | `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
-| `artifacts/Image-6.12.gz` | 15,889,094 B | `75ba44496b0eccdb3f1ca9bdee6428a835c42f0dd2b99eb4e22485219e42127c` |
+| `artifacts/Image-6.12.gz` | 15,888,295 B | `cf8635f255d36ea79c4dfd816b00680a9421c185a6259670a1a7e12d2d3fa9a6` |
 | `artifacts/odessa-6.12.dtb` | 588,303 B | `b2b43adcd2e86a5c21b0052dbeb92af5a2e45f2054593910987f444ced14e7d2` (modem DT + LED) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
 
 The boot image reserves 1,134,592 bytes under the 64 MiB `boot_b` limit.
 
-Kernel build 2026-11-08 (`6.12.0 #7 SMP PREEMPT Sun Nov  8 13:10:01 UTC 2026`)
+Kernel build 2026-11-08 (`6.12.0 #8 SMP PREEMPT Sun Nov  8 13:55:02 UTC 2026`)
 adds the container prerequisites that the 2026-11-07 build only had as
 modules: `NF_TABLES`, `NF_NAT`, `NFT_*` (nat/masq/redir/ct/reject/compat),
 iptables/ip6tables compatibility, `BRIDGE`, `BRIDGE_NETFILTER`, `VETH`,
@@ -280,3 +280,22 @@ battery-guard.timer                 active, 30 s period
 
 The guard stops at >=60% and resumes at <=40%; the voltage fallback uses
 4.00 V / 3.65 V if the QG value is stale.
+
+### Charge control restored (2026-11-08)
+
+`drivers/power/supply/odessa_chg.c` existed only in the reference tree, so the
+release kernel had no `charge_enable` node at all and the guard exited at its
+first `[ -w "$CHG" ]` check without a trace. The driver now comes from
+`kernel/patches/0003-odessa-charger.patch` and exposes the PM6150
+`CHARGING_ENABLE_CMD` (0x1042 bit 0) plus `charge_inhibit` and `status`.
+
+```
+path    /sys/devices/platform/soc/c440000.qcom,spmi/spmi-0/0-00/\
+        c440000.qcom,spmi:qcom,pm6150@0:odessa-chg/charge_enable
+cap     71 %   vbat 4.093 V
+0       status 7 (DISABLE_CHARGE)
+1       status 3 (FAST_CHARGE)
+```
+
+Round trip verified with the 30 s timer: write 1, the timer fires, the guard
+writes 0 and the PMIC reports 7 again.

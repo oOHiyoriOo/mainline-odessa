@@ -38,6 +38,9 @@ fi
 if [ ! -f "$SRC/drivers/soc/qcom/odessa_glink.c" ]; then
     ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0002-odessa-modem-pas.patch" )
 fi
+if [ ! -f "$SRC/drivers/power/supply/odessa_chg.c" ]; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0003-odessa-charger.patch" )
+fi
 
 echo "== configure"
 cp -f "$REPO/kernel/config-6.12-odessa" "$SRC/.config"
