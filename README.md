@@ -21,6 +21,7 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Userspace | Ubuntu 26.04.1 LTS, systemd 259.9, dbus, iproute2 |
 | Battery | 40-60% charge guard, PM6150 charge control (0x1042[0]) |
 | Screen | boot console visible, then WLED backlight off (true off) |
+| Status LED | PM6150L TRILED (`qcom-spmi-lpg`), front LED on channel 1, `heartbeat` trigger |
 | Containers | Docker 29.9.3: overlayfs, `docker0` 172.17.0.1/16, iptables-nft/NAT |
 | Boot | `systemctl is-system-running` = running, 0 failed units |
 

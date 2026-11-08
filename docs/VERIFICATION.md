@@ -7,15 +7,15 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 65,953,792 B (62.90 MiB) | `af907b4757c1d1c18c12e9483effef5cf3e2dd3d26b4d3b2087dacba1562322e` |
+| `artifacts/odessa-6.12-boot.img` | 65,966,080 B (62.91 MiB) | `2f883bfdc89ec53db19e277bb1ab8a36348af562920d5ae3da290ada3a85beb8` |
 | `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
-| `artifacts/Image-6.12.gz` | 15,870,015 B | `e318f94e2bb8cb8de46e884cd2fa51b0650ba45df29a9107e11097b3a51c0620` |
-| `artifacts/odessa-6.12.dtb` | 587,494 B | ABL-merged DTB (fix35) |
+| `artifacts/Image-6.12.gz` | 15,885,714 B | `f05ad8e3d468d357b2aaf65ccd4b723afbfec5dcd3003611b0f3b10fd43f6f68` |
+| `artifacts/odessa-6.12.dtb` | 586,569 B | ABL-merged DTB (fix35) + LED node |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
 
-The boot image reserves 1,155,072 bytes under the 64 MiB `boot_b` limit.
+The boot image reserves 1,142,784 bytes under the 64 MiB `boot_b` limit.
 
-Kernel build 2026-11-08 (`6.12.0 #1 SMP PREEMPT Sun Nov  8 01:53:05 UTC 2026`)
+Kernel build 2026-11-08 (`6.12.0 #2 SMP PREEMPT Sun Nov  8 10:59:25 UTC 2026`)
 adds the container prerequisites that the 2026-11-07 build only had as
 modules: `NF_TABLES`, `NF_NAT`, `NFT_*` (nat/masq/redir/ct/reject/compat),
 iptables/ip6tables compatibility, `BRIDGE`, `BRIDGE_NETFILTER`, `VETH`,
@@ -45,7 +45,47 @@ With the previous image `mount -t overlay` failed with `ENODEV` (overlay was a
 module and the kernel image ships none). With the `vfs` storage driver and
 `bridge: none` Docker could still start, but had no container network.
 
-## End-to-end run on empty userdata
+## Status LED (2026-11-08)
+
+The front LED next to the selfie camera is the PM6150L TRILED block. The vendor
+DT describes it as `qcom,leds@d000` with `compatible = "qcom,tri-led"`, which
+has no mainline driver; the LPG hardware behind it (`qcom,pwms@b100`) does.
+The DT node was retargeted to the mainline binding:
+
+```
+/soc/qcom,spmi@c440000/qcom,pm6150l@5/pwm {
+        compatible = "qcom,pm6150l-lpg", "qcom,pm8150l-lpg";
+        #address-cells = <1>; #size-cells = <0>; #pwm-cells = <2>;
+        status = "okay";
+        led@1 { reg = <1>; label = "charging";
+                linux,default-trigger = "heartbeat"; };
+        led@2 { reg = <2>; label = "green"; };
+        led@3 { reg = <3>; label = "blue"; };
+};
+```
+
+`led@N` uses a 1-based `reg` that maps to `lpg->channels[reg - 1]`; for the
+`qcom,pm8150l-lpg` data those are `0xb100/BIT(7)`, `0xb200/BIT(6)` and
+`0xb300/BIT(5)`, with `triled_base = 0xd000`. `qcom,power-source` is only read
+when the matched data sets `triled_has_src_sel`, which is not the case here, so
+it is not required. `CONFIG_LEDS_CLASS_MULTICOLOR`, `CONFIG_LEDS_QCOM_LPG` and
+`CONFIG_QCOM_PBS` are now built in (`=y`); the driver needs
+`qcom_pbs_trigger_event`/`get_pbs_client_device`.
+
+Verified on the device (no modules loaded):
+
+```
+/sys/class/leds/                 charging  green  blue
+/sys/class/leds/charging/device/driver   qcom-spmi-lpg
+charging/trigger                 [heartbeat]
+brightness samples               0 0 511 0 511 0 0 0 0 0
+/proc/modules                    0 entries
+```
+
+Only channel 1 (`0xb100`) is populated on this board and it is white; channels
+2 and 3 stay dark at full brightness. The vendor label `charging` is just a
+label, not a colour.
+
 
 Commands: `fastboot erase userdata`, `fastboot flash boot_b
 artifacts/odessa-6.12-boot.img`, `fastboot set_active b`, `fastboot reboot`.
