@@ -12,8 +12,9 @@
 			arch = "arm64";
 			os = "linux";
 			compression = "gzip";
-			load = <0x0 0x90000000>;
-			entry = <0x0 0x90000000>;
+			/* stay clear of the MSS reserved region 0x8b000000-0x933fffff */
+			load = <0x0 0x98000000>;
+			entry = <0x0 0x98000000>;
 			hash-1 { algo = "sha256"; };
 		};
 
@@ -23,7 +24,7 @@
 			type = "flat_dt";
 			arch = "arm64";
 			compression = "none";
-			load = <0x0 0x8F000000>;
+			load = <0x0 0x9B000000>;
 			hash-1 { algo = "sha256"; };
 		};
 
