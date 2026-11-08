@@ -207,6 +207,124 @@ OnUnitActiveSec=30s
 WantedBy=timers.target
 EOF
 
+# --- modem RFS plumbing (rmtfs / tqftpserv) --------------------------------
+# The odessa rootfs has no udev, so the by-partlabel links and the RFS
+# bind mounts have to be created by hand.  Both scripts are idempotent and
+# run as ExecStartPre of rmtfs/tqftpserv (see the drop-ins below).
+cat > "$R/usr/local/sbin/odessa-partlabels" <<'EOF'
+#!/bin/sh
+# Populate /dev/disk/by-partlabel for rmtfs -P.
+#
+# The odessa release rootfs deliberately has no udev, so the by-partlabel
+# symlinks normally created by udev are missing.  rmtfs resolves the modem's
+# /boot/modem_fs* requests through /dev/disk/by-partlabel/<partlabel>.
+set -eu
+
+mkdir -p /dev/disk/by-partlabel
+
+for disk in /dev/sd?; do
+	[ -b "$disk" ] || continue
+	partx -s -o NR,NAME "$disk" 2>/dev/null | while read -r nr name; do
+		case "$nr" in
+		''|NR) continue ;;
+		esac
+		[ -n "${name:-}" ] || continue
+		ln -sfn "../../$(basename "$disk")$nr" "/dev/disk/by-partlabel/$name"
+	done
+done
+
+# rmtfs's generic table asks for the unslotted name 'fsg'; odessa only has
+# fsg_a/fsg_b.  Slot a is the original stock slot.
+if [ -e /dev/disk/by-partlabel/fsg_a ]; then
+	ln -sfn fsg_a /dev/disk/by-partlabel/fsg
+elif [ -e /dev/disk/by-partlabel/fsg_b ]; then
+	ln -sfn fsg_b /dev/disk/by-partlabel/fsg
+fi
+
+# odessa has no 'tunning' partition.  Back it with an empty file so a modem
+# request does not fail (rmtfs -r serves it from a RAM shadow buffer).
+if [ ! -e /dev/disk/by-partlabel/tunning ]; then
+	mkdir -p /var/lib/rmtfs
+	if [ ! -f /var/lib/rmtfs/tunning ]; then
+		truncate -s 2M /var/lib/rmtfs/tunning
+	fi
+	ln -sfn /var/lib/rmtfs/tunning /dev/disk/by-partlabel/tunning
+fi
+EOF
+chmod 755 "$R/usr/local/sbin/odessa-partlabels"
+
+cat > "$R/usr/local/sbin/odessa-rfs-links" <<'EOF'
+#!/bin/sh
+# Wire the modem RFS files into the places where tqftpserv looks for them.
+#
+# tqftpserv resolves
+#   /readonly/firmware/image/<file>  ->  /lib/firmware/<file>
+#   /readwrite/<file>                ->  /tmp/tqftpserv/<file>
+#
+# The modem's RFS files live in the persist partition, which the release
+# rootfs does not mount and which is not reachable through udev (no udev).
+set -eu
+
+/usr/local/sbin/odessa-partlabels
+
+mkdir -p /persist
+if ! grep -q " /persist " /proc/mounts; then
+	mount -o ro /dev/disk/by-partlabel/persist /persist
+fi
+
+# Read-only firmware requests: expose the RFS tree through /lib/firmware.
+for entry in /persist/rfs/msm/mpss/*; do
+	[ -e "$entry" ] || continue
+	ln -sfn "$entry" "/lib/firmware/$(basename "$entry")"
+done
+
+# Read-write requests: tqftpserv uses the compile-time /tmp/tqftpserv, which
+# is tmpfs.  Back it with a persistent directory on the root filesystem and
+# seed it (without clobbering the modem's own writes) from persist.
+mkdir -p /var/lib/tqftpserv /tmp/tqftpserv
+cp -an /persist/rfs/msm/mpss/. /var/lib/tqftpserv/ 2>/dev/null || true
+
+# odessa has no persisted ota_firewall/ruleset (the modem normally finds it
+# in the vendor's /data/vendor/tmp/tqftpserv); provide an empty ruleset so the
+# open succeeds instead of failing with ENOENT.
+if [ ! -e /var/lib/tqftpserv/ota_firewall/ruleset ]; then
+	mkdir -p /var/lib/tqftpserv/ota_firewall
+	: > /var/lib/tqftpserv/ota_firewall/ruleset
+fi
+if ! grep -q " /tmp/tqftpserv " /proc/mounts; then
+	cp -an /tmp/tqftpserv/. /var/lib/tqftpserv/ 2>/dev/null || true
+	mount --bind /var/lib/tqftpserv /tmp/tqftpserv
+fi
+EOF
+chmod 755 "$R/usr/local/sbin/odessa-rfs-links"
+
+# Drop-ins for the distribution units (rmtfs/tqftpserv from Ubuntu).
+mkdir -p "$R/etc/systemd/system/rmtfs.service.d" \
+         "$R/etc/systemd/system/tqftpserv.service.d"
+
+cat > "$R/etc/systemd/system/rmtfs.service.d/override.conf" <<'EOF'
+[Unit]
+StartLimitIntervalSec=300
+StartLimitBurst=3
+[Service]
+Restart=on-failure
+RestartSec=5
+ExecStart=
+ExecStart=/usr/bin/rmtfs -o /var/lib/rmtfs-efs
+ExecStartPre=/usr/local/sbin/odessa-partlabels
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ -e /dev/qcom_rmtfs_mem1 ] && exit 0; sleep 1; done; exit 1'
+EOF
+
+cat > "$R/etc/systemd/system/tqftpserv.service.d/override.conf" <<'EOF'
+[Service]
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+ExecStartPre=/usr/local/sbin/odessa-rfs-links
+ExecStart=
+ExecStart=/usr/bin/tqftpserv
+EOF
+
 # --- SSH-only console: blank the framebuffer after boot --------------------
 # There is no backlight class with simpledrm, so this clears the scanout to
 # black and suppresses further console output. getty@tty1 is masked because
