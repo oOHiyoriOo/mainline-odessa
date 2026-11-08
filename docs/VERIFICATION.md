@@ -7,15 +7,15 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 65,970,176 B (62.92 MiB) | `7b10fd3a50f5c1daf0dd471a5820370e95a99a88dee46445c2f10a5bb2cd612e` |
+| `artifacts/odessa-6.12-boot.img` | 65,974,272 B (62.92 MiB) | `1952a73690bb35b73b8fc07ad4d9790ccb3c598464c0ff20a06ef6717394df46` |
 | `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
-| `artifacts/Image-6.12.gz` | 15,885,952 B | `7dd891d6a96f4cfc97301eabf1cfbea72bd7a1e4c96412c4a9a9b1278e0acb89` |
+| `artifacts/Image-6.12.gz` | 15,889,094 B | `75ba44496b0eccdb3f1ca9bdee6428a835c42f0dd2b99eb4e22485219e42127c` |
 | `artifacts/odessa-6.12.dtb` | 588,303 B | `b2b43adcd2e86a5c21b0052dbeb92af5a2e45f2054593910987f444ced14e7d2` (modem DT + LED) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
 
-The boot image reserves 1,138,688 bytes under the 64 MiB `boot_b` limit.
+The boot image reserves 1,134,592 bytes under the 64 MiB `boot_b` limit.
 
-Kernel build 2026-11-08 (`6.12.0 #6 SMP PREEMPT Sun Nov  8 12:25:05 UTC 2026`)
+Kernel build 2026-11-08 (`6.12.0 #7 SMP PREEMPT Sun Nov  8 13:10:01 UTC 2026`)
 adds the container prerequisites that the 2026-11-07 build only had as
 modules: `NF_TABLES`, `NF_NAT`, `NFT_*` (nat/masq/redir/ct/reject/compat),
 iptables/ip6tables compatibility, `BRIDGE`, `BRIDGE_NETFILTER`, `VETH`,
@@ -153,13 +153,64 @@ remoteproc0: remote processor 4080000.qcom,mss is now up
 The modem is **not** auto-started (`auto_boot = false`); it comes up with
 `echo start > /sys/class/remoteproc/remoteproc0/state`.
 
-Open issue: the firmware reports `fatal error without message` 40 s after a
-start and the crash-reason SMEM item (421) is never written, so there is no
-PC or register context on the AP side. With `rmtfs` running the crash is
-unchanged, and a logging TFTP server records zero requests, so neither EFS
-nor TFTP is the trigger. Wi-Fi stays blocked; the remaining difference to
-the vendor stack is IPA (`qcom,ipa@1e00000`, `pas_id 0xf`), for which
-mainline 6.12 has no SM6150 glue.
+### Why the modem never reached userspace
+
+The modem image was running, but the AP never read its QRTR traffic: the
+release is monolithic (no `/lib/modules` at all) while `CONFIG_QRTR_SMD` was
+`=m`, so no driver bound the `IPCRTR` rpmsg channel:
+
+```
+4080000.qcom,mss:glink-edge.IPCRTR.-1.-1              -> driver: NONE
+/sys/bus/rpmsg/drivers: qcom_glink_ssr, qcom_smd_rpm, qcom_sysmon, rpmsg_ns
+```
+
+`CONFIG_QRTR_SMD`, `CONFIG_RPMSG_CTRL` and `CONFIG_RPMSG_CHAR` are now `=y`.
+With that the modem is reachable and registers nine QRTR services within
+0.6 s of `is now up` (node id 0, as announced by the firmware):
+
+```
+43 66 15 51 21 24 23 22 36 49      (49 = IPA control service, last)
+```
+
+The second fix is the PD map. `pd-mapper` resolves it next to the remoteproc
+firmware, i.e. `/lib/firmware/modemr.jsn` and `modemuw.jsn`, but the package
+ships them under `/lib/firmware/qcom/`. Without them it logs
+`no pd maps available` and answers the domain-list request with an empty map,
+so `msm/modem/wlan_pd` (`qmi_instance_id 180`) does not exist for the modem.
+`kernel/install-pd-map.sh` copies the two files into place.
+
+### Open issue: crash right after IPA registers
+
+With the transport and the PD map fixed the modem still dies, now with a
+crash reason instead of silence:
+
+```
+qcom_q6v5_pas 4080000.qcom,mss: fatal error received:
+    :0:EX:kernel:0:rf:16e:PC=c06c9b50
+```
+
+The string format is the firmware's own `EX:%s:%x:%s:%x:PC=%x`
+(`modem.b16`, `modem.b29`): context `kernel`, thread `rf`, and a counter that
+increments on every restart. `0xc06c9b50` is a load inside the function at
+`0xc06c9af4`, a page allocator that picks one of three fixed pools
+(`0xa1a00000`, `0xa1e00000`, `0xa1600000`, ~128 x 4 KiB each) and reads the
+attribute word of the selected page. The fault is a read from pool C.
+
+Timing depends on which AP services answer, which shows the fault is at the
+end of the modem's init, not in the EFS path:
+
+| AP services available | crash after `is now up` | message |
+|---|---|---|
+| none | 40.5 s | `fatal error without message` |
+| `rmtfs` | 12.5 s | `rf:...:PC=c06c9b50` |
+| `rmtfs` + `pd-mapper` with empty map | 0.57 s | `rf:...:PC=c06c9b50` |
+| `rmtfs` + `pd-mapper` + `tqftpserv` | 0.6 s | `rf:...:PC=c06c9b50` |
+
+EFS itself is healthy: `rmtfs` serves `modem_fs1/fs2/fsg` (the first two are
+byte-identical to `modemst1/2`), and zero TFTP requests are made. Wi-Fi stays
+blocked because the modem dies before it can load the WLAN protection domain;
+the remaining difference to the vendor stack is IPA (`qcom,ipa@1e00000`,
+`pas_id 0xf`), for which mainline 6.12 has no SM6150 glue.
 
 ## Second boot (no self-install)
 
