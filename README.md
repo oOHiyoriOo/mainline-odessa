@@ -22,12 +22,13 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Battery | 40-60% charge guard, PM6150 charge control (0x1042[0]) |
 | Screen | boot console visible, then WLED backlight off (true off) |
 | Status LED | PM6150L TRILED (`qcom-spmi-lpg`), front LED on channel 1, `heartbeat` trigger |
+| Modem | `remoteproc0` = `4080000.qcom,mss` (`qcom,sm6150-mpss-pas`), `modem.mdt` loads, GLINK/IPCRTR up, `rmtfs` active; firmware dies after 40 s |
 | Containers | Docker 29.9.3: overlayfs, `docker0` 172.17.0.1/16, iptables-nft/NAT |
 | Boot | `systemctl is-system-running` = running, 0 failed units |
 
-Out of scope / blocked: Wi-Fi (WCN3990; GLINK edges register but the remote
-side never opens IPCRTR, so no QRTR/WLFW service), modem, camera, DSI panel,
-GPU, suspend/PM.
+Out of scope / blocked: Wi-Fi (WCN3990 — the transport chain works, but the
+modem firmware reports `fatal error without message` 40 s after start and the
+WLFW QRTR service never appears), camera, DSI panel, GPU, suspend/PM.
 
 ## Flash
 

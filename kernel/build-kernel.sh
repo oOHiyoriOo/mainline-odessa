@@ -31,9 +31,12 @@ if [ ! -d "$SRC" ]; then
     tar xf "$TARBALL" -C "$SRC" --strip-components=1
 fi
 
-echo "== apply odessa patch (idempotent)"
+echo "== apply odessa patches (idempotent)"
 if [ ! -f "$SRC/drivers/clk/qcom/gcc-sdmmagpie.c" ]; then
     ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0001-odessa-sm6150-support.patch" )
+fi
+if [ ! -f "$SRC/drivers/soc/qcom/odessa_glink.c" ]; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0002-odessa-modem-pas.patch" )
 fi
 
 echo "== configure"

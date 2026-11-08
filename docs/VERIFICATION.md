@@ -7,15 +7,15 @@ Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 
 | File | Size | SHA256 |
 |---|---|---|
-| `artifacts/odessa-6.12-boot.img` | 65,966,080 B (62.91 MiB) | `2f883bfdc89ec53db19e277bb1ab8a36348af562920d5ae3da290ada3a85beb8` |
+| `artifacts/odessa-6.12-boot.img` | 65,970,176 B (62.92 MiB) | `7b10fd3a50f5c1daf0dd471a5820370e95a99a88dee46445c2f10a5bb2cd612e` |
 | `artifacts/rootfs-install.tar.gz` | 44,239,575 B (42.14 MiB) | `302256657bdb22d37e57fcce01d2683856f03a077ae6b2f48e537081dcd3fb71` |
-| `artifacts/Image-6.12.gz` | 15,885,714 B | `f05ad8e3d468d357b2aaf65ccd4b723afbfec5dcd3003611b0f3b10fd43f6f68` |
-| `artifacts/odessa-6.12.dtb` | 586,569 B | ABL-merged DTB (fix35) + LED node |
+| `artifacts/Image-6.12.gz` | 15,885,952 B | `7dd891d6a96f4cfc97301eabf1cfbea72bd7a1e4c96412c4a9a9b1278e0acb89` |
+| `artifacts/odessa-6.12.dtb` | 588,303 B | `b2b43adcd2e86a5c21b0052dbeb92af5a2e45f2054593910987f444ced14e7d2` (modem DT + LED) |
 | `artifacts/u-boot.bin` | 1,509,904 B | U-Boot v2026.10 build |
 
-The boot image reserves 1,142,784 bytes under the 64 MiB `boot_b` limit.
+The boot image reserves 1,138,688 bytes under the 64 MiB `boot_b` limit.
 
-Kernel build 2026-11-08 (`6.12.0 #2 SMP PREEMPT Sun Nov  8 10:59:25 UTC 2026`)
+Kernel build 2026-11-08 (`6.12.0 #6 SMP PREEMPT Sun Nov  8 12:25:05 UTC 2026`)
 adds the container prerequisites that the 2026-11-07 build only had as
 modules: `NF_TABLES`, `NF_NAT`, `NFT_*` (nat/masq/redir/ct/reject/compat),
 iptables/ip6tables compatibility, `BRIDGE`, `BRIDGE_NETFILTER`, `VETH`,
@@ -111,6 +111,55 @@ usb0                             172.16.42.1/24
 dpkg --audit                     (empty)
 installed packages               112
 ```
+
+## Modem / remoteproc (2026-11-08)
+
+Three separate regressions had to be fixed before the modem could be started
+at all. All three were drift inside this project, not missing hardware
+support:
+
+1. `odessa_glink.c` existed only in one source tree. It is now part of
+   `kernel/patches/0002-odessa-modem-pas.patch`, so a build from the pinned
+   tarball contains it.
+2. `qcom_q6v5_pas.c` lacked the `qcom,sm6150-mpss-pas` compatible and its
+   `sm6150_mpss_resource` descriptor (`pas_id 4`, `crash_reason_smem 421`,
+   `ssr_name "mpss"`). Same patch.
+3. `CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE=y` made the first TZ memory call hang,
+   which surfaced as `Starting Kernel ...` with no output. The release config
+   now uses `CONFIG_QCOM_TZMEM_MODE_GENERIC=y`, the setting the 2026-11-07
+   test kernel used.
+
+`CONFIG_QCOM_RMTFS_MEM` is now `=y` as well (it was `=m`, and loading the
+module hung for the same TZMEM reason), so `/dev/qcom_rmtfs_mem1` exists at
+boot and `rmtfs.service` starts.
+
+The device tree used for this image (`kernel/dts/odessa-6.12-modem.dts`)
+keeps the vendor `odessa-glink` node **disabled**: the custom GLINK-edge
+driver and the PAS subdevice both claim IRQ 35, and only one of them may.
+With PAS working the custom node is redundant.
+
+Verified on the device:
+
+```
+remoteproc0: Booting fw image modem.mdt, size 9100
+remoteproc0: remote processor 4080000.qcom,mss is now up
+4080000.qcom,mss:glink-edge.IPCRTR.-1.-1
+4080000.qcom,mss:glink-edge.SSM_RTR_MODEM_APPS.-1.-1
+4080000.qcom,mss:glink-edge.glink_ssr.-1.-1
+4080000.qcom,mss:glink-edge.rpmsg_ctrl.0.0
+/dev/qcom_rmtfs_mem1          present, rmtfs.service active
+```
+
+The modem is **not** auto-started (`auto_boot = false`); it comes up with
+`echo start > /sys/class/remoteproc/remoteproc0/state`.
+
+Open issue: the firmware reports `fatal error without message` 40 s after a
+start and the crash-reason SMEM item (421) is never written, so there is no
+PC or register context on the AP side. With `rmtfs` running the crash is
+unchanged, and a logging TFTP server records zero requests, so neither EFS
+nor TFTP is the trigger. Wi-Fi stays blocked; the remaining difference to
+the vendor stack is IPA (`qcom,ipa@1e00000`, `pas_id 0xf`), for which
+mainline 6.12 has no SM6150 glue.
 
 ## Second boot (no self-install)
 

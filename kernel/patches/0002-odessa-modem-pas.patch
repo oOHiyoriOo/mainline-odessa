@@ -1,0 +1,108 @@
+diff -Naur a/drivers/remoteproc/qcom_q6v5_pas.c b/drivers/remoteproc/qcom_q6v5_pas.c
+--- a/drivers/remoteproc/qcom_q6v5_pas.c	2026-11-08 12:55:15.645834365 +0000
++++ b/drivers/remoteproc/qcom_q6v5_pas.c	2026-11-08 12:55:15.635657326 +0000
+@@ -1187,6 +1187,18 @@
+ 	.ssctl_id = 0x12,
+ };
+ 
++static const struct adsp_data sm6150_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "modem.mdt",
++	.pas_id = 4,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++};
++
+ static const struct adsp_data sc8180x_mpss_resource = {
+ 	.crash_reason_smem = 421,
+ 	.firmware_name = "modem.mdt",
+@@ -1423,6 +1435,7 @@
+ 	{ .compatible = "qcom,sa8775p-gpdsp1-pas", .data = &sa8775p_gpdsp1_resource},
+ 	{ .compatible = "qcom,sc7180-adsp-pas", .data = &sm8250_adsp_resource},
+ 	{ .compatible = "qcom,sc7180-mpss-pas", .data = &mpss_resource_init},
++	{ .compatible = "qcom,sm6150-mpss-pas", .data = &sm6150_mpss_resource},
+ 	{ .compatible = "qcom,sc7280-adsp-pas", .data = &sm8350_adsp_resource},
+ 	{ .compatible = "qcom,sc7280-cdsp-pas", .data = &sm6350_cdsp_resource},
+ 	{ .compatible = "qcom,sc7280-mpss-pas", .data = &mpss_resource_init},
+diff -Naur a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+--- a/drivers/soc/qcom/Makefile	2026-11-08 12:55:15.645650575 +0000
++++ b/drivers/soc/qcom/Makefile	2026-11-08 12:55:15.634440304 +0000
+@@ -39,3 +39,4 @@
+ qcom_ice-objs			+= ice.o
+ obj-$(CONFIG_QCOM_INLINE_CRYPTO_ENGINE)	+= qcom_ice.o
+ obj-$(CONFIG_QCOM_PBS) +=	qcom-pbs.o
++obj-y += odessa_glink.o
+diff -Naur a/drivers/soc/qcom/odessa_glink.c b/drivers/soc/qcom/odessa_glink.c
+--- a/drivers/soc/qcom/odessa_glink.c	1970-01-01 00:00:00.000000000 +0000
++++ b/drivers/soc/qcom/odessa_glink.c	2026-11-08 12:55:15.633254842 +0000
+@@ -0,0 +1,66 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * odessa: instantiate the modem GLINK edge without an SM6150 remoteproc
++ * driver. The modem is already booted by ABL; this only brings up the
++ * SMEM/mailbox transport so that rpmsg channels (IPCRTR -> QRTR) exist.
++ */
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/rpmsg/qcom_glink.h>
++#include <linux/slab.h>
++
++struct odessa_glink {
++	struct qcom_glink_smem *smem;
++	struct device_node *node;
++};
++
++static int odessa_glink_probe(struct platform_device *pdev)
++{
++	struct odessa_glink *g;
++
++	g = devm_kzalloc(&pdev->dev, sizeof(*g), GFP_KERNEL);
++	if (!g)
++		return -ENOMEM;
++
++	g->node = of_get_next_child(pdev->dev.of_node, NULL);
++	if (!g->node)
++		return -ENODEV;
++
++	g->smem = qcom_glink_smem_register(&pdev->dev, g->node);
++	if (IS_ERR(g->smem)) {
++		of_node_put(g->node);
++		return PTR_ERR(g->smem);
++	}
++
++	platform_set_drvdata(pdev, g);
++	dev_info(&pdev->dev, "modem GLINK edge registered\n");
++	return 0;
++}
++
++static void odessa_glink_remove(struct platform_device *pdev)
++{
++	struct odessa_glink *g = platform_get_drvdata(pdev);
++
++	qcom_glink_smem_unregister(g->smem);
++	of_node_put(g->node);
++}
++
++static const struct of_device_id odessa_glink_of_match[] = {
++	{ .compatible = "odessa,glink-edge" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, odessa_glink_of_match);
++
++static struct platform_driver odessa_glink_driver = {
++	.probe = odessa_glink_probe,
++	.remove_new = odessa_glink_remove,
++	.driver = {
++		.name = "odessa-glink",
++		.of_match_table = odessa_glink_of_match,
++	},
++};
++builtin_platform_driver(odessa_glink_driver);
++
++MODULE_DESCRIPTION("Odessa modem GLINK edge");
++MODULE_LICENSE("GPL");
