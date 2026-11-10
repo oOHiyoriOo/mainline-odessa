@@ -3,8 +3,6 @@ Description=Odessa Wi-Fi (wpa_supplicant + DHCP on wlan0)
 Documentation=file:/etc/wpa_supplicant.conf
 After=odessa-fw-provision.service pd-mapper.service odessa-modem.service network.target
 Wants=odessa-modem.service network.target
-# timesyncd starts only after the link has a default route
-Before=systemd-timesyncd.service
 
 [Service]
 Type=oneshot
