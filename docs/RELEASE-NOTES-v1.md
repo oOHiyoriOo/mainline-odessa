@@ -58,6 +58,15 @@ Dabei gefunden und behoben: `prepare-rootfs.sh` überschrieb systemd durch den
 `pd-mapper` (Distro) fand die Maps nicht; Vendor-Firmware musste kopiert
 statt verlinkt werden.
 
+## Wi-Fi Bring-up im Boot (Nachtrag 2026-11-10)
+
+`odessa-wlan.service` uebernimmt Associate + DHCP: `wpa_supplicant` aus
+`/etc/wpa_supplicant.conf`, danach busybox-`udhcpc` mit eigenem Hook. Der Hook
+setzt Adresse, **Default-Route** und `/etc/resolv.conf` aus dem Lease und
+wiederholt das bei jedem Renewal; ohne `network=`-Block ist die Unit ein No-op.
+Vorher blieb nach `ip addr add` nur die On-Link-Route stehen (kein `apt`, kein
+DNS ueber das Gateway).
+
 ## Finale Abnahme (Clean-Install, 2026-11-10)
 
 Frisch installiert aus `artifacts/rootfs-install.tar.gz` (122 MB gz / 374 MB):

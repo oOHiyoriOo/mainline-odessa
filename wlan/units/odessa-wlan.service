@@ -1,0 +1,17 @@
+[Unit]
+Description=Odessa Wi-Fi (wpa_supplicant + DHCP on wlan0)
+Documentation=file:/etc/wpa_supplicant.conf
+After=odessa-fw-provision.service pd-mapper.service network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/odessa-wlan-up.sh
+# udhcpc keeps renewing in the background: do not take it down with the unit
+KillMode=process
+TimeoutStartSec=240
+ExecStop=-/bin/sh -c 'kill $(cat /run/udhcpc.wlan0.pid) 2>/dev/null; /usr/local/bin/busybox pkill -x wpa_supplicant'
+
+[Install]
+WantedBy=multi-user.target

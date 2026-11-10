@@ -46,14 +46,25 @@ Remaining limitations:
 - The MAC address is random per boot (the firmware reports
   `00:00:00:00:00:00`); a stable MAC would need a device-tree
   `local-mac-address`.
-- No NetworkManager/iwd; association uses `wpa_supplicant` and the shipped
-  static `iw`/`wpa_cli` (see `wlan/README.md`).
+- No NetworkManager/iwd. `odessa-wlan.service` runs `wpa_supplicant` and the
+  busybox DHCP client with the shipped static `iw`/`wpa_cli`; it is a no-op
+  until `/etc/wpa_supplicant.conf` contains a `network={}` block (see
+  `wlan/README.md`).
 
 ## Network
 
-Only the point-to-point USB link exists. There is no default route, no DHCP
-client, no DNS resolver and no NAT. `apt` can only work if the host forwards
-traffic (host-side `ip_forward` + masquerade) — not part of this image.
+Two links come up at boot:
+
+- `usb0` — the point-to-point USB gadget (172.16.42.1/24, no DHCP server, no
+  NAT); it exists for SSH and host-side tooling.
+- `wlan0` — `odessa-wlan.service` associates with the network from
+  `/etc/wpa_supplicant.conf` and runs the busybox DHCP client. Its hook installs
+  the lease address, the **default route** and `/etc/resolv.conf` (DHCP
+  resolvers, gateway as fallback). The service is a no-op while the shipped
+  template has no `network={}` block.
+
+There is no forwarding between the two links. IPv6 is SLAAC only (no IPv6
+default route), so dual-stack clients fall back to IPv4.
 
 ## Battery guard
 

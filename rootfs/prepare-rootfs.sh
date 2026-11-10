@@ -682,6 +682,16 @@ WPAEOF
         # template only (no credentials); the user sets 0600 after adding a network
         chmod 644 "$R/etc/wpa_supplicant.conf"
     fi
+    # associate + DHCP at boot (no-op until a network= block exists); the
+    # DHCP hook installs address, default route and DNS from the lease
+    install -m 755 "$WLAN/scripts/odessa-wlan-up.sh" \
+        "$R/usr/local/sbin/odessa-wlan-up.sh"
+    install -m 755 "$WLAN/scripts/odessa-udhcpc.sh" \
+        "$R/usr/local/sbin/odessa-udhcpc.sh"
+    install -m 644 "$WLAN/units/odessa-wlan.service" \
+        "$R/etc/systemd/system/odessa-wlan.service"
+    ln -sfn /etc/systemd/system/odessa-wlan.service \
+        "$R/etc/systemd/system/multi-user.target.wants/odessa-wlan.service"
 fi
 
 # cloning: no fixed machine-id and no SSH host keys in the image; systemd and

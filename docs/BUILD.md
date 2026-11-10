@@ -127,21 +127,34 @@ sudo ./rootfs/prepare-rootfs.sh   # installs modules, units, firmware, tools
 - `/lib/firmware/ath10k/WCN3990/hw1.0/{firmware-5.bin,board-2.bin}` and
   `/lib/firmware/regulatory.db{,.p7s}`;
 - `/opt/re-tools/{iw,wpa_supplicant,wpa_cli}`;
-- `/etc/wpa_supplicant.conf` template (mode 0600).
+- `/etc/wpa_supplicant.conf` template (mode 0600);
+- `/usr/local/sbin/odessa-wlan-up.sh` + `odessa-udhcpc.sh`, enabled via
+  `odessa-wlan.service` (associate, then DHCP with default route and DNS).
 
 The firmware metadata `firmware-5.bin` must carry feature bit 18
 (`MGMT_TX_BY_REF`); `wlan/firmware/patch-firmware-features.sh` patches an
 existing file idempotently (`00 00 08` -> `00 00 0c`). `wlanmdsp.mbn` and the
 vendor BDF still come from the modem partition via the existing RFS links.
 
-Bring-up on the device:
+Bring-up on the device (automatic):
+
+```bash
+# add the network block to the shipped template, then:
+systemctl restart odessa-wlan
+ip -4 addr show wlan0; ip route; cat /etc/resolv.conf
+```
+
+`odessa-wlan.service` is a no-op while `/etc/wpa_supplicant.conf` has no
+`network={}` entry, so a fresh install keeps booting without Wi-Fi. The DHCP
+hook (`odessa-udhcpc.sh`) re-applies address, default route and resolver on
+every lease renewal; a bare `ip addr add` leaves the link without a route.
+
+Manual fallback for debugging (does *not* install a default route):
 
 ```bash
 ip link set wlan0 up
 iw dev wlan0 scan
-# network={ ssid="..." psk="..." key_mgmt=WPA-PSK proto=RSN pairwise=CCMP group=CCMP }
 wpa_supplicant -Dnl80211 -i wlan0 -c /etc/wpa_supplicant.conf -B
-udhcpc -i wlan0            # or ip addr add/route
 iw dev wlan0 link
 ```
 

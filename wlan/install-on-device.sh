@@ -34,6 +34,11 @@ for u in wlan-smmu wlan-rails mmi-unit-info; do
         > "/etc/systemd/system/$u.service"
     systemctl enable "$u" >/dev/null 2>&1 || true
 done
+# association + DHCP (installs default route and DNS from the lease)
+install -m 755 "$HERE/scripts/odessa-wlan-up.sh" /usr/local/sbin/odessa-wlan-up.sh
+install -m 755 "$HERE/scripts/odessa-udhcpc.sh"  /usr/local/sbin/odessa-udhcpc.sh
+install -m 644 "$HERE/units/odessa-wlan.service" /etc/systemd/system/odessa-wlan.service
+systemctl enable odessa-wlan >/dev/null 2>&1 || true
 systemctl daemon-reload
 
 if [ ! -f /etc/wpa_supplicant.conf ]; then

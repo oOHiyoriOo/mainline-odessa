@@ -45,12 +45,24 @@ Zwei Wege:
 
 ## Inbetriebnahme
 
+SSID/PSK in `/etc/wpa_supplicant.conf` eintragen (`network={ ... }`), dann:
+
+```sh
+systemctl restart odessa-wlan
+ip -4 addr show wlan0; ip route; cat /etc/resolv.conf
+```
+
+`odessa-wlan.service` (in `units/`) startet `wpa_supplicant`, wartet auf
+`wpa_state=COMPLETED` und laesst den busybox-DHCP-Client
+(`scripts/odessa-udhcpc.sh`) Adresse, **Default-Route** und `/etc/resolv.conf`
+setzen — auch bei Lease-Renewal. Ohne `network=`-Block ist die Unit ein No-op.
+
+Manuell (nur zur Diagnose, ohne Default-Route):
+
 ```sh
 ip link set wlan0 up
 iw dev wlan0 scan
-# /etc/wpa_supplicant.conf: network={ ssid="..." psk="..." key_mgmt=WPA-PSK }
 wpa_supplicant -Dnl80211 -i wlan0 -c /etc/wpa_supplicant.conf -B
-udhcpc -i wlan0            # oder ip addr add / ip route
 iw dev wlan0 link
 ```
 

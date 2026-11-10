@@ -164,6 +164,21 @@ if grep -q 'ctrl_interface=/run/wpa_supplicant' "$R/etc/wpa_supplicant.conf" 2>/
 else
 	bad "wpa_supplicant.conf template missing"
 fi
+# bring-up: association + DHCP must install the default route and DNS
+for f in /usr/local/sbin/odessa-wlan-up.sh /usr/local/sbin/odessa-udhcpc.sh; do
+	if [ -x "$R$f" ]; then ok "$R$f"; else bad "$R$f missing"; fi
+done
+check_file "$R/etc/systemd/system/odessa-wlan.service" 50
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/odessa-wlan.service" ]; then
+	ok "odessa-wlan enabled"
+else
+	bad "odessa-wlan not enabled"
+fi
+if grep -q "ip route add default via" "$R/usr/local/sbin/odessa-udhcpc.sh" 2>/dev/null; then
+	ok "dhcp hook installs default route"
+else
+	bad "dhcp hook does not install a default route"
+fi
 
 # --- modem userspace / pd-mapper ------------------------------------------
 for t in /usr/bin/pd-mapper /usr/bin/rmtfs /usr/bin/tqftpserv; do
