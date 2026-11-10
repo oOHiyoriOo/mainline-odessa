@@ -69,6 +69,14 @@ wiederholt das bei jedem Renewal; ohne `network=`-Block ist die Unit ein No-op.
 Vorher blieb nach `ip addr add` nur die On-Link-Route stehen (kein `apt`, kein
 DNS ueber das Gateway).
 
+## Uhrzeit / apt (Nachtrag 2026-11-10)
+
+Ohne RTC-Treiber startete die Uhr mit der Rootfs-Bauzeit; `apt` verwarf die
+Release-Dateien als "not valid yet". Das Payload enthaelt jetzt
+`systemd-timesyncd` (Restore aus `/var/lib/systemd/timesync/clock` beim Boot,
+NTP-Abgleich direkt nach dem WLAN-Assoziieren). `apt-get update` laeuft auf
+dem frisch gebooteten System durch.
+
 ## Finale Abnahme (Clean-Install, 2026-11-10)
 
 Frisch installiert aus `artifacts/rootfs-install.tar.gz` (122 MB gz / 374 MB):

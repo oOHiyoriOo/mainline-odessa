@@ -183,6 +183,17 @@ ordered after `odessa-fw-provision`, `pd-mapper`, `rmtfs` and the ath10k helper
 modules and before `odessa-wlan`. The kernel only registers the remoteproc on
 its own, so without this unit `wlan0` appears only after a manual start.
 
+### Clock (systemd-timesyncd)
+
+The board has no RTC driver, so the payload ships `systemd-timesyncd`
+(`rootfs/debs/systemd-timesyncd_*`, enabled through `sysinit.target.wants`).
+Do not order it after `network.target`: the unit has
+`DefaultDependencies=no`/`Before=sysinit.target`, which creates an ordering
+cycle. `odessa-wlan-up.sh` restarts it once the default route exists, so the
+clock is stepped directly after association. systemd restores
+`/var/lib/systemd/timesync/clock` at boot, which keeps `apt` usable even
+before the first NTP packet.
+
 ### Docker (optional)
 
 `extras/docker/install-docker-static.sh <docker-<ver>.tgz>` installs the

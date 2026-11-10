@@ -76,8 +76,16 @@ without loading the battery, so it stays at the current SoC.
 
 ## Clock
 
-The system clock starts at the rootfs build time (no RTC driver/NTP). Set it
-manually (`date -s ...`) or add a time source.
+There is no RTC driver on odessa. systemd restores the last known time from
+`/var/lib/systemd/timesync/clock` at boot and `systemd-timesyncd` (shipped in
+the payload) steps it once the Wi-Fi link has a default route; `odessa-wlan`
+restarts the unit after association so the correction happens immediately
+instead of at the next poll interval. Consequences:
+
+- after a long power-off the clock is behind by that duration until NTP syncs;
+- without configured Wi-Fi credentials there is no time source, so `apt`
+  rejects Release files as "not valid yet" until the clock is set manually
+  (`date -s ...`).
 
 ## Accounts and login
 
