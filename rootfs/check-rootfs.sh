@@ -168,6 +168,17 @@ fi
 for f in /usr/local/sbin/odessa-wlan-up.sh /usr/local/sbin/odessa-udhcpc.sh; do
 	if [ -x "$R$f" ]; then ok "$R$f"; else bad "$R$f missing"; fi
 done
+if [ -x "$R/usr/lib/systemd/systemd-timesyncd" ]; then
+	ok "systemd-timesyncd present"
+else
+	bad "systemd-timesyncd missing (clock stays at build time)"
+fi
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service" ]; then
+	ok "systemd-timesyncd enabled"
+else
+	bad "systemd-timesyncd not enabled"
+fi
+check_file "$R/etc/systemd/system/systemd-timesyncd.service.d/odessa.conf" 30
 check_file "$R/etc/systemd/system/odessa-modem.service" 50
 if [ -L "$R/etc/systemd/system/multi-user.target.wants/odessa-modem.service" ]; then
 	ok "odessa-modem enabled"

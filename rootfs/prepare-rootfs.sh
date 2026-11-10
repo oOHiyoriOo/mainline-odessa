@@ -632,10 +632,31 @@ for d in "$REPO"/rootfs/debs/libqrtr1_*_arm64.deb \
          "$REPO"/rootfs/debs/libmnl*_arm64.deb \
          "$REPO"/rootfs/debs/libnfnetlink*_arm64.deb \
          "$REPO"/rootfs/debs/libnetfilter-conntrack*_arm64.deb \
-         "$REPO"/rootfs/debs/netbase_*_all.deb; do
+         "$REPO"/rootfs/debs/netbase_*_all.deb \
+         "$REPO"/rootfs/debs/systemd-timesyncd_*_arm64.deb; do
     [ -f "$d" ] || continue
     dpkg-deb -x "$d" "$R"
 done
+
+# --- clock: NTP ------------------------------------------------------------
+# There is no RTC driver on odessa, so the clock starts at the rootfs build
+# time. apt rejects Release files that are dated in the future ("not valid
+# yet") until the clock is right. systemd-timesyncd starts after the Wi-Fi
+# bring-up and steps the clock as soon as the link has a default route.
+if [ -x "$R/usr/lib/systemd/systemd-timesyncd" ]; then
+    mkdir -p "$R/etc/systemd/system/systemd-timesyncd.service.d"
+    # ordered by odessa-wlan's Before=systemd-timesyncd (no cycle: both are
+    # pulled by multi-user.target)
+    cat > "$R/etc/systemd/system/systemd-timesyncd.service.d/odessa.conf" <<'EOF'
+[Unit]
+After=network.target
+Wants=network.target
+EOF
+    mkdir -p "$R/etc/systemd/system/multi-user.target.wants"
+    ln -sfn /usr/lib/systemd/system/systemd-timesyncd.service \
+        "$R/etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service"
+fi
+
 # dpkg-deb -x does not run postinst/update-alternatives; wire the nft
 # front-ends explicitly (docker calls plain `iptables`)
 for a in iptables ip6tables; do
