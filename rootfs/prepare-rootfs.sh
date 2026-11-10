@@ -563,15 +563,59 @@ install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
 ln -sfn /etc/systemd/system/odessa-fw-provision.service \
     "$R/etc/systemd/system/multi-user.target.wants/odessa-fw-provision.service"
 
+# --- Docker Engine (static binaries, no package manager needed) -----------
+DOCKER_TGZ=$REPO/extras/docker/docker-28.5.1-aarch64.tgz
+if [ -f "$DOCKER_TGZ" ]; then
+    TMPD=$(mktemp -d)
+    tar xzf "$DOCKER_TGZ" -C "$TMPD"
+    install -d -m 755 "$R/usr/local/bin"
+    install -m 755 "$TMPD"/docker/* "$R/usr/local/bin/"
+    rm -rf "$TMPD"
+    cat > "$R/etc/systemd/system/docker.service" <<'UNIT'
+[Unit]
+Description=Docker Engine (static)
+After=network.target
+
+[Service]
+Type=notify
+# bridge/NAT need iptables (packages in rootfs/debs, kernel flags are =y)
+ExecStart=/usr/local/bin/dockerd
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
+    ln -sfn /etc/systemd/system/docker.service \
+        "$R/etc/systemd/system/multi-user.target.wants/docker.service"
+fi
+
 # --- modem userspace (rmtfs, tqftpserv, qrtr) + pd-mapper ---------------
 # The base payload has no arm64 dpkg for these; extract the bundled debs
 # directly into the tree and enable their units.
 for d in "$REPO"/rootfs/debs/libqrtr1_*_arm64.deb \
          "$REPO"/rootfs/debs/rmtfs_*_arm64.deb \
          "$REPO"/rootfs/debs/tqftpserv_*_arm64.deb \
-         "$REPO"/rootfs/debs/qrtr-tools_*_arm64.deb; do
+         "$REPO"/rootfs/debs/qrtr-tools_*_arm64.deb \
+         "$REPO"/rootfs/debs/iptables_*_arm64.deb \
+         "$REPO"/rootfs/debs/libxtables*_arm64.deb \
+         "$REPO"/rootfs/debs/libip4tc*_arm64.deb \
+         "$REPO"/rootfs/debs/libip6tc*_arm64.deb \
+         "$REPO"/rootfs/debs/libnftnl*_arm64.deb \
+         "$REPO"/rootfs/debs/libmnl*_arm64.deb \
+         "$REPO"/rootfs/debs/libnfnetlink*_arm64.deb \
+         "$REPO"/rootfs/debs/libnetfilter-conntrack*_arm64.deb \
+         "$REPO"/rootfs/debs/netbase_*_all.deb; do
     [ -f "$d" ] || continue
     dpkg-deb -x "$d" "$R"
+done
+# dpkg-deb -x does not run postinst/update-alternatives; wire the nft
+# front-ends explicitly (docker calls plain `iptables`)
+for a in iptables ip6tables; do
+    if [ -e "$R/usr/sbin/$a-nft" ] && [ ! -e "$R/usr/sbin/$a" ]; then
+        ln -sfn "$a-nft" "$R/usr/sbin/$a"
+    fi
 done
 install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
 for u in rmtfs pd-mapper tqftpserv; do

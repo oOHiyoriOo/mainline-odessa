@@ -83,7 +83,19 @@ echo "== mount"
 $SSH root@"$DEV" "mkdir -p /mnt && mount $PART /mnt"
 
 echo "== transfer rootfs ($(du -h "$TARBALL" | cut -f1))"
-cat "$TARBALL" | $SSH root@"$DEV" "tar -x -C /mnt -f -"
+# copy first, then extract locally: streaming a decompressed tar over the USB
+# link is fragile on large payloads (tar: short read)
+$SSH root@"$DEV" "rm -f /mnt/.odessa-payload"
+cat "$TARBALL" | $SSH root@"$DEV" "cat > /mnt/.odessa-payload"
+case "$TARBALL" in
+    *.gz|*.tgz)
+        $SSH root@"$DEV" "gunzip -c /mnt/.odessa-payload | tar -x -C /mnt -f -"
+        ;;
+    *)
+        $SSH root@"$DEV" "tar -x -C /mnt -f /mnt/.odessa-payload"
+        ;;
+esac
+$SSH root@"$DEV" "rm -f /mnt/.odessa-payload"
 # root entry must be root-owned (see build-rootfs.sh); otherwise dpkg/tar
 # refuses unsafe path transitions and silently skips package members
 $SSH root@"$DEV" "chown root:root /mnt"
@@ -102,7 +114,11 @@ elif [ "$WITH_SYSTEMD" -eq 1 ]; then
     echo "== pre-install systemd ($(du -h "$DEBS_TAR" | cut -f1))"
     cat "$DEBS_TAR" | $SSH root@"$DEV" "mkdir -p /mnt/tmp/debs && tar -x -C /mnt/tmp/debs -f -"
     # maintainer scripts (systemd-sysusers/tmpfiles, dbus) need /proc and /sys
-    $SSH root@"$DEV" "mount --bind /proc /mnt/proc 2>/dev/null; mount --bind /sys /mnt/sys 2>/dev/null; mount --bind /dev /mnt/dev 2>/dev/null; true"
+    $SSH root@"$DEV" "mkdir -p /mnt/dev /mnt/proc /mnt/sys; mount --bind /dev /mnt/dev 2>/dev/null; mount --bind /proc /mnt/proc 2>/dev/null; mount --bind /sys /mnt/sys 2>/dev/null; true"
+    $SSH root@"$DEV" "test -c /mnt/dev/null" || {
+        echo "ERROR: /dev not available in the target chroot" >&2
+        exit 9
+    }
     # dpkg ordering matters: systemd pre-depends on libsystemd-shared (must be
     # configured first) and systemd-sysv pre-depends on systemd. Unpacking all
     # debs in one transaction fails, so install libsystemd-shared first, then
@@ -135,6 +151,10 @@ elif [ "$WITH_SYSTEMD" -eq 1 ]; then
     # is set by mke2fs above)
     $SSH root@"$DEV" "grep -q '^LABEL=odessa-root' /mnt/etc/fstab || echo 'LABEL=odessa-root / ext4 defaults 0 1' >> /mnt/etc/fstab"
 fi
+
+# the systemd package drops a dangling modules-load link into images without
+# /etc/modules; this kernel is monolithic apart from three helper modules
+$SSH root@"$DEV" "rm -f /mnt/etc/modules-load.d/modules.conf 2>/dev/null; true"
 
 echo "== finalize"
 $SSH root@"$DEV" "touch /mnt/etc/odessa-ready && sync && du -sh /mnt && umount /mnt && echo INSTALL_OK"

@@ -181,6 +181,28 @@ else
 	bad "odessa-fw-provision missing"
 fi
 
+# --- iptables (docker bridge/NAT) -----------------------------------------
+for t in /usr/sbin/iptables /usr/sbin/iptables-nft /usr/sbin/ip6tables; do
+	if [ -e "$R$t" ]; then ok "$R$t"; else bad "$R$t missing"; fi
+done
+if [ -e "$R/usr/lib/aarch64-linux-gnu/libnftnl.so.11" ] ||
+   ls "$R"/usr/lib/aarch64-linux-gnu/libnftnl.so.11* >/dev/null 2>&1; then
+	ok "libnftnl present"
+else
+	bad "libnftnl missing"
+fi
+
+
+# --- docker ---------------------------------------------------------------
+for t in /usr/local/bin/dockerd /usr/local/bin/docker /usr/local/bin/containerd; do
+	if [ -x "$R$t" ]; then ok "$R$t"; else bad "$R$t missing"; fi
+done
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/docker.service" ]; then
+	ok "docker enabled"
+else
+	bad "docker not enabled"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
 	echo "check-rootfs: PASS"
