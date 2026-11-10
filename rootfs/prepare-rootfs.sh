@@ -403,6 +403,32 @@ RestartSec=2
 ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 60 ] && [ ! -e /sys/class/remoteproc/remoteproc0/firmware ]; do i=$((i+1)); sleep 1; done; exit 0'
 PDMAPPER_EOF
 
+# --- modem start (PAS) -----------------------------------------------------
+# The kernel only registers the remoteproc; the MSS has to be started
+# explicitly. pd-mapper must serve the PD map first (QRTR 0x45), otherwise the
+# WLAN PD never appears, and the ath10k helper modules must be loaded before
+# icnss probes. Without this unit wlan0 only appears after a manual
+# `echo start > /sys/class/remoteproc/remoteproc0/state`.
+cat > "$R/etc/systemd/system/odessa-modem.service" <<'EOF'
+[Unit]
+Description=Odessa modem (start the MSS remoteproc)
+After=odessa-fw-provision.service pd-mapper.service rmtfs.service wlan-smmu.service wlan-rails.service mmi-unit-info.service
+Wants=odessa-fw-provision.service pd-mapper.service
+Before=odessa-wlan.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 90); do [ -e /sys/class/remoteproc/remoteproc0/state ] && exit 0; sleep 1; done; exit 1'
+ExecStart=/bin/sh -c 'grep -q running /sys/class/remoteproc/remoteproc0/state || echo start > /sys/class/remoteproc/remoteproc0/state'
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target
+EOF
+ln -sfn /etc/systemd/system/odessa-modem.service \
+    "$R/etc/systemd/system/multi-user.target.wants/odessa-modem.service"
+
 # --- SSH-only console: blank the framebuffer after boot --------------------
 # There is no backlight class with simpledrm, so this clears the scanout to
 # black and suppresses further console output. getty@tty1 is masked because

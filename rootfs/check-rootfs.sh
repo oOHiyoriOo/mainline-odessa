@@ -168,6 +168,18 @@ fi
 for f in /usr/local/sbin/odessa-wlan-up.sh /usr/local/sbin/odessa-udhcpc.sh; do
 	if [ -x "$R$f" ]; then ok "$R$f"; else bad "$R$f missing"; fi
 done
+check_file "$R/etc/systemd/system/odessa-modem.service" 50
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/odessa-modem.service" ]; then
+	ok "odessa-modem enabled"
+else
+	bad "odessa-modem not enabled"
+fi
+if grep -q "echo start > /sys/class/remoteproc/remoteproc0/state" \
+   "$R/etc/systemd/system/odessa-modem.service" 2>/dev/null; then
+	ok "modem unit starts the remoteproc"
+else
+	bad "modem unit does not start the remoteproc"
+fi
 check_file "$R/etc/systemd/system/odessa-wlan.service" 50
 if [ -L "$R/etc/systemd/system/multi-user.target.wants/odessa-wlan.service" ]; then
 	ok "odessa-wlan enabled"
