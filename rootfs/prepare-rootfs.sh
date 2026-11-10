@@ -640,14 +640,16 @@ done
 
 # --- clock: NTP ------------------------------------------------------------
 # There is no RTC driver on odessa, so the clock starts at the rootfs build
-# time. apt rejects Release files that are dated in the future ("not valid
-# yet") until the clock is right. systemd-timesyncd starts after the Wi-Fi
-# bring-up and steps the clock as soon as the link has a default route.
+# time and apt rejects Release files dated in the future ("not valid yet").
+# systemd-timesyncd restores /var/lib/systemd/timesync/clock at boot and
+# odessa-wlan restarts it once the default route exists, so the clock is
+# stepped right after association.
+#
+# Do not order it after network.target: the unit has DefaultDependencies=no
+# and runs Before=sysinit.target, which turns that into an ordering cycle.
+# Drop a stale drop-in that an earlier build may have left behind.
+rm -rf "$R/etc/systemd/system/systemd-timesyncd.service.d"
 if [ -x "$R/usr/lib/systemd/systemd-timesyncd" ]; then
-    mkdir -p "$R/etc/systemd/system/systemd-timesyncd.service.d"
-    # the unit has DefaultDependencies=no and runs Before=sysinit.target;
-    # adding network ordering would create a cycle, so it starts as shipped
-    # and odessa-wlan restarts it once the default route exists
     mkdir -p "$R/etc/systemd/system/sysinit.target.wants"
     ln -sfn /usr/lib/systemd/system/systemd-timesyncd.service \
         "$R/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
