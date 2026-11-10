@@ -645,16 +645,14 @@ done
 # bring-up and steps the clock as soon as the link has a default route.
 if [ -x "$R/usr/lib/systemd/systemd-timesyncd" ]; then
     mkdir -p "$R/etc/systemd/system/systemd-timesyncd.service.d"
-    # ordered by odessa-wlan's Before=systemd-timesyncd (no cycle: both are
-    # pulled by multi-user.target)
-    cat > "$R/etc/systemd/system/systemd-timesyncd.service.d/odessa.conf" <<'EOF'
-[Unit]
-After=network.target
-Wants=network.target
-EOF
-    mkdir -p "$R/etc/systemd/system/multi-user.target.wants"
+    # the unit has DefaultDependencies=no and runs Before=sysinit.target;
+    # adding network ordering would create a cycle, so it starts as shipped
+    # and odessa-wlan restarts it once the default route exists
+    mkdir -p "$R/etc/systemd/system/sysinit.target.wants"
     ln -sfn /usr/lib/systemd/system/systemd-timesyncd.service \
-        "$R/etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service"
+        "$R/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
+    ln -sfn /usr/lib/systemd/system/systemd-timesyncd.service \
+        "$R/etc/systemd/system/dbus-org.freedesktop.timesync1.service"
 fi
 
 # dpkg-deb -x does not run postinst/update-alternatives; wire the nft

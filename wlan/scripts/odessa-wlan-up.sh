@@ -55,6 +55,11 @@ for _ in $(seq 1 30); do
 	sleep 1
 done
 if $BB ip route show default 2>/dev/null | grep -q "dev $IFACE"; then
+	# the clock starts at the rootfs build time (no RTC); restarting tsyncd
+	# here makes it step the clock immediately instead of waiting for its
+	# next (backed-off) poll interval
+	[ -x /usr/lib/systemd/systemd-timesyncd ] && \
+		systemctl try-restart systemd-timesyncd >/dev/null 2>&1 || true
 	echo "odessa-wlan: up ($( $BB ip -4 -o addr show "$IFACE" 2>/dev/null | awk '{print $4}' ))"
 else
 	echo "odessa-wlan: associated but no default route (DHCP?)" >&2

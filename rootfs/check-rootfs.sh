@@ -173,12 +173,16 @@ if [ -x "$R/usr/lib/systemd/systemd-timesyncd" ]; then
 else
 	bad "systemd-timesyncd missing (clock stays at build time)"
 fi
-if [ -L "$R/etc/systemd/system/multi-user.target.wants/systemd-timesyncd.service" ]; then
+if [ -L "$R/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service" ]; then
 	ok "systemd-timesyncd enabled"
 else
 	bad "systemd-timesyncd not enabled"
 fi
-check_file "$R/etc/systemd/system/systemd-timesyncd.service.d/odessa.conf" 30
+if grep -q "try-restart systemd-timesyncd" "$R/usr/local/sbin/odessa-wlan-up.sh" 2>/dev/null; then
+	ok "wlan bring-up restarts timesyncd"
+else
+	bad "wlan bring-up does not restart timesyncd"
+fi
 check_file "$R/etc/systemd/system/odessa-modem.service" 50
 if [ -L "$R/etc/systemd/system/multi-user.target.wants/odessa-modem.service" ]; then
 	ok "odessa-modem enabled"
