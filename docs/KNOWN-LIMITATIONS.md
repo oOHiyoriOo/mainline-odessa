@@ -90,6 +90,14 @@ Wi-Fi/modem (blocked, see above), camera, GPU (KGSL), USB-PD, suspend.
 device (`...e69c40c38d6-220818`, DTBO entry 2). Another firmware or panel
 revision needs a new merge before the image is expected to work.
 
+## Bootloader slot rollback
+
+The stock bootloader tracks a retry counter for each slot. Mainline never
+marks a boot as successful, so after several reboots without a flash the
+counter runs out and the device falls back to slot `a` (stock Android/
+recovery). Fix: `fastboot --set-active=b` (or flash `boot_b` again), then
+boot. This is a bootloader behaviour, not a kernel defect.
+
 ## Bootloader policy
 
 `fastboot flash userdata` and `fastboot flash super` are refused. Only

@@ -57,3 +57,20 @@ Dabei gefunden und behoben: `prepare-rootfs.sh` überschrieb systemd durch den
 übersprang die Deb-Installation; `mke2fs` scheiterte an einem Probe-Mount;
 `pd-mapper` (Distro) fand die Maps nicht; Vendor-Firmware musste kopiert
 statt verlinkt werden.
+
+## Finale Abnahme (Clean-Install, 2026-11-10)
+
+Frisch installiert aus `artifacts/rootfs-install.tar.gz` (122 MB gz / 374 MB):
+
+| Ziel | Beleg |
+|---|---|
+| WLAN | `wpa_state=COMPLETED`, `key_mgmt=WPA2-PSK`, DHCP 192.168.179.51, `ping` 3/3 (5-15 ms) |
+| Docker | Engine 28.5.1 aktiv, `docker0` 172.17.0.1/16, Container `eth0` 172.17.0.2, Ping aufs Gateway ok |
+| Display aus | `odessa-screen-off` aktiv, Backlight-Brightness 0 |
+| LED Heartbeat | `charging/trigger=[heartbeat]`, Helligkeitsproben 0/511 |
+| Sauberer Start | `systemctl is-system-running = running`, keine failed Units |
+| Battery Guard | Timer aktiv, Kapazität 100 %, `charge_enable=0` (Laden aus) |
+
+Hinweis: Der Motorola-Bootloader zählt Boots ohne „successful"-Markierung und
+fällt nach mehreren Reboots auf Slot a zurück; mit `fastboot --set-active=b`
+(oder erneutem Flashen von `boot_b`) geht es zurück auf mainline.
