@@ -1,5 +1,16 @@
+# generated build output
 build/
 config.env
 *.log
 rootfs.tar
-.git.bak-preclean/
+.git.bak-*/
+
+# Large binaries are build outputs, not source. They are rebuilt with the
+# documented steps (docs/BUILD.md) and published as GitHub release assets;
+# Git cannot carry them (GitHub rejects blobs >= 100 MB, warns at 50 MB).
+artifacts/Image-6.12.gz
+artifacts/odessa-6.12-boot.img
+artifacts/rootfs-install.tar
+artifacts/rootfs-install.tar.gz
+extras/docker/*.tgz
+rootfs/base/*.tar.gz

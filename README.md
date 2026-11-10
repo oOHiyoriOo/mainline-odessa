@@ -77,13 +77,13 @@ EOF
 ## Repository layout
 
 ```
-artifacts/           ready-to-flash boot.img + rootfs payload + build inputs
-  odessa-6.12-boot.img   62.27 MiB, sha256 29353394...731f15
-  rootfs-install.tar.gz  42.14 MiB rootfs payload (used by the self-install)
-  Image-6.12.gz          kernel used in the FIT
-  odessa-6.12.dtb        ABL-merged DTB used in the FIT
-  u-boot.bin             U-Boot chainloader (boot.img "kernel")
-  stock-boot.dtb         stock boot DTB (boot.img header field)
+artifacts/           build inputs (small) + build outputs (git-ignored)
+  odessa-6.12.dtb        ABL-merged DTB used in the FIT          [tracked]
+  u-boot.bin             U-Boot chainloader (boot.img "kernel")  [tracked]
+  stock-boot.dtb         stock boot DTB (boot.img header field)  [tracked]
+  Image-6.12.gz          kernel used in the FIT        \
+  odessa-6.12-boot.img   ready-to-flash boot image      > build outputs,
+  rootfs-install.tar.gz  rootfs payload                 /  see .gitignore
 kernel/              config, patches (0001..0006), DTS source, FIT template, build scripts
 wlan/                Wi-Fi (WCN3990): ath10k helper modules, systemd units,
                      firmware metadata + regdb, static iw/wpa_supplicant tools
@@ -94,7 +94,12 @@ tools/host/          mkimage, dtc, mkbootimg (host-side packing)
 docs/                build, flash, verification, hardware, limits, history
 ```
 
-Everything needed to flash is in `artifacts/`. Everything needed to rebuild
+The large files in `artifacts/` are **build outputs** and are not tracked by
+Git (GitHub rejects blobs of 100 MB and up; the rootfs payload alone is
+~120 MB). They are attached to the GitHub release, or rebuilt with
+`docs/BUILD.md`. `make check` verifies whichever of them are present.
+
+Everything needed to rebuild
 the boot image offline is in `kernel/`, `uboot/`, `initramfs/` and
 `tools/host/`; only the kernel and U-Boot *source trees* are fetched (pinned
 versions, SHA256 for the kernel tarball).

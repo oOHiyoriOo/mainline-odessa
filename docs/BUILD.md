@@ -196,7 +196,41 @@ sudo chown root:root build/tree
 sudo tar -C build/tree -cf - . | gzip -9 > artifacts/rootfs-install.tar.gz
 ```
 
-## Ext4 feature note
+### Generated artifacts and Git
+
+`artifacts/Image-6.12.gz`, `artifacts/odessa-6.12-boot.img` and
+`artifacts/rootfs-install.tar.gz` are build outputs. They are listed in
+`.gitignore` and shipped as GitHub release assets, not as repository content:
+GitHub rejects any blob of 100 MB or more and warns above 50 MB, so the
+~120 MB rootfs payload cannot live in Git history. The same applies to
+`extras/docker/*.tgz` and `rootfs/base/*.tar.gz`, which are downloaded third
+party tarballs (`rootfs/build-rootfs.sh` prints the canonical URL).
+
+After a rebuild, refresh the checksums:
+
+```bash
+cd artifacts && sha256sum Image-6.12.gz odessa-6.12.dtb odessa-6.12-boot.img \
+    rootfs-install.tar.gz stock-boot.dtb u-boot.bin > SHA256SUMS
+```
+
+`make check` uses `sha256sum -c --ignore-missing`, so it passes in a fresh
+clone where only the tracked inputs exist.
+
+Publishing the release (the artifacts stay out of Git history, the tag holds
+the sources and the exact build recipe):
+
+```bash
+git push origin main --tags
+gh release create v1 --title "Odessa mainline 6.12 v1" \
+    artifacts/odessa-6.12-boot.img \
+    artifacts/rootfs-install.tar.gz \
+    artifacts/Image-6.12.gz \
+    artifacts/odessa-6.12.dtb \
+    artifacts/SHA256SUMS \
+    --notes-file docs/RELEASE-NOTES-v1.md
+```
+
+# Ext4 feature note
 
 The static `mke2fs 1.47.4` enables `orphan_file` by default; the rootfs userland
 (`resize2fs` 1.46/1.47) rejects it and `odessa-growfs` would fail. All

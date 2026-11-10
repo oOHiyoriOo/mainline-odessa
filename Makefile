@@ -19,9 +19,11 @@ export AUTHKEY JOBS
 
 all: bootimg rootfs-img simg
 
+# --ignore-missing: the big artifacts are build outputs (see .gitignore) and
+# are absent in a fresh clone
 check:
-	@cd artifacts && sha256sum -c SHA256SUMS
-	@echo "artifacts OK"
+	@cd artifacts && sha256sum -c --ignore-missing SHA256SUMS
+	@echo "artifacts OK (present files only)"
 
 # Static regression check of the prepared rootfs tree (screen-off, masked
 # getty/backlight, RFS plumbing, firmware). Run after prepare-rootfs.sh.
