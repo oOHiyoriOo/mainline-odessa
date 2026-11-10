@@ -22,14 +22,13 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Battery | 40-60% charge guard, PM6150 charge control (0x1042[0]) |
 | Screen | boot console visible, then WLED backlight off (true off) |
 | Status LED | PM6150L TRILED (`qcom-spmi-lpg`), front LED on channel 1, `heartbeat` trigger |
-| Modem | `remoteproc0` = `4080000.qcom,mss` (`qcom,sm6150-mpss-pas`), `modem.mdt` loads, GLINK/IPCRTR up, QRTR works (`qrtr-smd` built in), nine modem services incl. EFS/IPA, `rmtfs` + `pd-mapper` active; firmware still asserts ~0.6 s after start |
-| Containers | Docker 29.9.3: overlayfs, `docker0` 172.17.0.1/16, iptables-nft/NAT |
+| Modem | `remoteproc0` = `4080000.qcom,mss` (`qcom,sm6150-mpss-pas`), runs stably (SMEM `mmi_unit_info` v3 via `wlan/modules/mmi_unit_info.c`), GLINK/IPCRTR up, QRTR works, `rmtfs` + `pd-mapper` active |
+| Wi-Fi | WCN3990 / `ath10k_snoc`: `wlan0` up, scan, WPA2-PSK association, DHCP (verified on a clean install 2026-11-10); needs `kernel/patches/0004-0006`, the firmware feature bit, the SMMU bypass, the modem userspace debs and the self-built `pd-mapper` — all shipped via `wlan/` (`docs/BUILD.md` §7) |
+| Containers | Docker Engine (static, `extras/docker/`): overlay2, containers run; bridge/NAT needs `iptables` (not in the payload) -> `--iptables=false --bridge=none` |
 | Boot | `systemctl is-system-running` = running, 0 failed units |
 
-Out of scope / blocked: Wi-Fi (WCN3990 — `ath10k_snoc` binds and waits for
-WLFW, and the QRTR transport chain is now complete, but the modem asserts in
-its page allocator right after the IPA service registers, so the WLAN
-protection domain is never loaded), camera, DSI panel, GPU, suspend/PM.
+Out of scope / blocked: camera, DSI panel, GPU, suspend/PM. Wi-Fi is
+functional since 2026-11-10 (see the Wi-Fi row above).
 
 ## Flash
 
@@ -85,7 +84,9 @@ artifacts/           ready-to-flash boot.img + rootfs payload + build inputs
   odessa-6.12.dtb        ABL-merged DTB used in the FIT
   u-boot.bin             U-Boot chainloader (boot.img "kernel")
   stock-boot.dtb         stock boot DTB (boot.img header field)
-kernel/              config, patch, DTS source, FIT template, build scripts
+kernel/              config, patches (0001..0006), DTS source, FIT template, build scripts
+wlan/                Wi-Fi (WCN3990): ath10k helper modules, systemd units,
+                     firmware metadata + regdb, static iw/wpa_supplicant tools
 uboot/               board files, f_acm patch, build/pack scripts
 initramfs/           init script, build script, static aarch64 tools
 rootfs/              base tarball, systemd debs, install/sanitize/snapshot

@@ -1,0 +1,1 @@
+savedcmd_/workspace/odessa-linux-6.12/wlan/modules/Module.symvers :=  scripts/mod/modpost -M        -o /workspace/odessa-linux-6.12/wlan/modules/Module.symvers -T /workspace/odessa-linux-6.12/wlan/modules/modules.order -i Module.symvers -e 

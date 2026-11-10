@@ -49,9 +49,18 @@ $SSH root@"$DEV" "true" || { echo "ERROR: device not reachable at $DEV (prep ima
 
 # --- safety checks ----------------------------------------------------------
 $SSH root@"$DEV" "test -b $PART" || { echo "ERROR: $PART not present" >&2; exit 1; }
-if $SSH root@"$DEV" "grep -q ' $PART ' /proc/mounts"; then
-    echo "ERROR: $PART is mounted on the device — refusing to format the running system." >&2
-    echo "       Boot the prep initramfs first (odessa.boot is NOT set)." >&2
+# a leftover probe mount (read-only) is fine to unmount; a mount as / means we
+# are running from the very filesystem we would destroy
+if $SSH root@"$DEV" "grep -q '^$PART / ' /proc/mounts"; then
+    echo "ERROR: $PART is mounted as / — boot the prep initramfs first." >&2
+    exit 1
+fi
+if $SSH root@"$DEV" "grep -q '^$PART ' /proc/mounts"; then
+    echo "== $PART is mounted, unmounting"
+    $SSH root@"$DEV" "umount /mnt 2>/dev/null; umount $PART 2>/dev/null; true"
+fi
+if $SSH root@"$DEV" "grep -q '^$PART ' /proc/mounts"; then
+    echo "ERROR: $PART still mounted on the device" >&2
     exit 1
 fi
 SIZE=$($SSH root@"$DEV" "blockdev --getsize64 $PART")
@@ -83,7 +92,9 @@ $SSH root@"$DEV" "chown root:root /mnt"
 # Runs the real maintainer scripts so the deployed image is a systemd system
 # from the first boot on. No qemu/chroot on the host needed: the device is
 # arm64 and busybox provides chroot.
-if [ "$WITH_SYSTEMD" -eq 1 ] && $SSH root@"$DEV" "test -e /mnt/usr/lib/systemd/systemd"; then
+# real systemd is an ELF binary; a shell script here is a bring-up stub and
+# must be replaced by the packaged systemd
+if [ "$WITH_SYSTEMD" -eq 1 ] && $SSH root@"$DEV" "head -c 4 /mnt/usr/lib/systemd/systemd 2>/dev/null | grep -q ELF"; then
     # the 26.04 release tarball already contains a configured systemd
     echo "== systemd already present in rootfs.tar, skipping deb pre-install"
 elif [ "$WITH_SYSTEMD" -eq 1 ]; then
@@ -94,21 +105,31 @@ elif [ "$WITH_SYSTEMD" -eq 1 ]; then
     $SSH root@"$DEV" "mount --bind /proc /mnt/proc 2>/dev/null; mount --bind /sys /mnt/sys 2>/dev/null; mount --bind /dev /mnt/dev 2>/dev/null; true"
     # dpkg ordering matters: systemd pre-depends on libsystemd-shared (must be
     # configured first) and systemd-sysv pre-depends on systemd. Unpacking all
-    # debs in one transaction fails, so install systemd-sysv last.
+    # debs in one transaction fails, so install libsystemd-shared first, then
+    # systemd, then systemd-sysv.
     $SSH root@"$DEV" "busybox chroot /mnt /bin/sh -c '
-        mkdir -p /tmp/debs-sysv
+        mkdir -p /tmp/debs-sysv /tmp/debs-main
         mv /tmp/debs/systemd-sysv_*.deb /tmp/debs-sysv/ 2>/dev/null || true
+        mv /tmp/debs/systemd_*.deb /tmp/debs-main/ 2>/dev/null || true
         dpkg --unpack /tmp/debs/*.deb || exit 1
-        dpkg --configure -a || exit 2
-        if ls /tmp/debs-sysv/*.deb >/dev/null 2>&1; then
-            dpkg --unpack /tmp/debs-sysv/*.deb || exit 3
-            dpkg --configure -a || exit 4
+        # dbus-system-bus-common needs adduser|systemd-sysusers, provided by
+        # the systemd package that is installed in the second stage; errors
+        # here are expected and re-checked by the final dpkg --audit.
+        dpkg --configure -a || true
+        if ls /tmp/debs-main/*.deb >/dev/null 2>&1; then
+            dpkg --unpack /tmp/debs-main/*.deb || exit 3
+            dpkg --configure -a || true
         fi
-        dpkg --audit || exit 5
-        test -L /sbin/init || exit 6
+        if ls /tmp/debs-sysv/*.deb >/dev/null 2>&1; then
+            dpkg --unpack /tmp/debs-sysv/*.deb || exit 5
+            dpkg --configure -a || true
+        fi
+        dpkg --audit > /tmp/dpkg-audit.txt 2>&1 || exit 7
+        if [ -s /tmp/dpkg-audit.txt ]; then cat /tmp/dpkg-audit.txt; exit 7; fi
+        test -L /sbin/init || exit 8
     '"
     $SSH root@"$DEV" "umount /mnt/proc /mnt/sys /mnt/dev 2>/dev/null; true"
-    $SSH root@"$DEV" "rm -rf /mnt/tmp/debs /mnt/tmp/debs-sysv"
+    $SSH root@"$DEV" "rm -rf /mnt/tmp/debs /mnt/tmp/debs-main /mnt/tmp/debs-sysv"
     $SSH root@"$DEV" "test -L /mnt/sbin/init || { echo 'ERROR: /sbin/init is not a symlink' >&2; exit 1; }; readlink /mnt/sbin/init"
     # systemd remounts / from fstab; give it the root entry (filesystem label
     # is set by mke2fs above)

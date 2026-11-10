@@ -7,6 +7,7 @@
 #   make rootfs-tar   unpack the payload to build/rootfs.tar
 #   make rootfs-img   build a 2 GiB ext4 image from the payload (needs sudo)
 #   make simg         convert the ext4 image to an Android sparse image
+#   make wlan-modules build the Wi-Fi helper modules against build/linux-6.12
 #
 SHELL := /bin/sh
 REPO  := $(CURDIR)
@@ -14,13 +15,22 @@ JOBS  ?= 12
 AUTHKEY ?= $(REPO)/config/authorized_keys.pub
 export AUTHKEY JOBS
 
-.PHONY: all check initramfs fit bootimg rootfs-tar rootfs-tree rootfs-img simg clean
+.PHONY: all check check-rootfs boot-check initramfs fit bootimg rootfs-tar rootfs-tree rootfs-img simg wlan-modules clean
 
 all: bootimg rootfs-img simg
 
 check:
 	@cd artifacts && sha256sum -c SHA256SUMS
 	@echo "artifacts OK"
+
+# Static regression check of the prepared rootfs tree (screen-off, masked
+# getty/backlight, RFS plumbing, firmware). Run after prepare-rootfs.sh.
+check-rootfs:
+	./rootfs/check-rootfs.sh build/rootfs-tree build/debs-combined.tar
+
+# Post-boot smoke test over SSH (screen really dark, RFS stack up, firmware).
+boot-check:
+	./tools/dev/check-boot.sh $(HOST)
 
 initramfs:
 	./initramfs/build-initramfs.sh
@@ -34,8 +44,13 @@ bootimg: fit
 rootfs-tar:
 	./rootfs/unpack-payload.sh
 
-rootfs-tree:
+rootfs-tree: wlan-modules
 	./rootfs/unpack-payload.sh --extract
+
+# out-of-tree helper modules (SMMU bypass, WLAN rails, SMEM mmi_unit_info);
+# requires the kernel from kernel/build-kernel.sh
+wlan-modules:
+	./wlan/modules/build-modules.sh
 
 rootfs-img: rootfs-tree
 	@command -v mke2fs >/dev/null || { echo "mke2fs missing (e2fsprogs)" >&2; exit 1; }

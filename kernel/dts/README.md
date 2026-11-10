@@ -19,6 +19,12 @@ decompiled DTS and patched in place.
   the vendor `odessa-glink` node is `disabled` so the PAS subdevice can own
   IRQ 35. Builds `artifacts/odessa-6.12.dtb` for the image in `artifacts/`.
 
+`odessa-6.12-modem.dts` is the **V1 runtime source** (`kernel/build-dtb.sh`
+defaults to it): it additionally carries the SM7150 TLMM compatible with
+`gpio-reserved-ranges = <0 4>`, drops `qcom,msa-fixed-perm` (stock icnss lets
+the SCM assign MSA permissions) and sets `qcom,snoc-host-cap-skip-quirk` for
+the WLAN node.
+
 Build: `./kernel/build-dtb.sh` (uses the bundled `dtc`), e.g.
 
 ```sh

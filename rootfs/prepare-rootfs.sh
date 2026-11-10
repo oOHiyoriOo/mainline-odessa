@@ -298,6 +298,64 @@ fi
 EOF
 chmod 755 "$R/usr/local/sbin/odessa-rfs-links"
 
+# Seed the file-backed rmtfs storage from the real calibration partitions.
+# The modem expects /boot/modem_fs1|fs2|fsc|fsg; rmtfs -o serves them from
+# files, so the modem's writes never touch modemst1/2, fsc or fsg.
+cat > "$R/usr/local/sbin/odessa-rmtfs-efs" <<'EOF'
+#!/bin/sh
+# Create the file-backed rmtfs storage tree (idempotent).
+set -eu
+
+D=/var/lib/rmtfs-efs
+mkdir -p "$D"
+
+seed() {
+	src=$1
+	dst=$2
+	[ -e "$D/$dst" ] && return 0
+	[ -b "$src" ] || return 0
+	if dd if="$src" of="$D/$dst.tmp" bs=1M 2>/dev/null; then
+		mv "$D/$dst.tmp" "$D/$dst"
+	fi
+}
+
+seed /dev/disk/by-partlabel/modemst1 modem_fs1
+seed /dev/disk/by-partlabel/modemst2 modem_fs2
+seed /dev/disk/by-partlabel/fsc       modem_fsc
+
+# fsg is *not* a raw modem image: the partition is a small ext4 filesystem
+# that Android mounts at /vendor/fsg and that holds the factory FSG as a
+# gzip file (e.g. odessa_dsds_apeu.img.gz -> "IMAGEFS- SIGNED_IMAGE").
+# The modem expects the decompressed image, so serving the raw ext4
+# partition makes the rf image fail.
+seed_fsg() {
+	[ -e "$D/modem_fsg" ] && return 0
+	mkdir -p /run/fsg
+	if mount -o ro /dev/disk/by-partlabel/fsg /run/fsg 2>/dev/null; then
+		for f in /run/fsg/odessa_dsds_apeu.img.gz /run/fsg/*.img.gz; do
+			[ -f "$f" ] || continue
+			if gzip -dc "$f" > "$D/modem_fsg.tmp" 2>/dev/null &&
+			   [ -s "$D/modem_fsg.tmp" ]; then
+				mv "$D/modem_fsg.tmp" "$D/modem_fsg"
+				umount /run/fsg
+				return 0
+			fi
+			rm -f "$D/modem_fsg.tmp"
+		done
+		umount /run/fsg
+	fi
+	# last resort: raw partition (wrong for this device, but keeps the
+	# service startable if the factory image is unavailable)
+	seed /dev/disk/by-partlabel/fsg modem_fsg
+}
+seed_fsg
+
+if [ ! -e "$D/modem_tunning" ]; then
+	dd if=/dev/zero of="$D/modem_tunning" bs=1M count=2 2>/dev/null || true
+fi
+EOF
+chmod 755 "$R/usr/local/sbin/odessa-rmtfs-efs"
+
 # Drop-ins for the distribution units (rmtfs/tqftpserv from Ubuntu).
 mkdir -p "$R/etc/systemd/system/rmtfs.service.d" \
          "$R/etc/systemd/system/tqftpserv.service.d"
@@ -312,6 +370,7 @@ RestartSec=5
 ExecStart=
 ExecStart=/usr/bin/rmtfs -o /var/lib/rmtfs-efs
 ExecStartPre=/usr/local/sbin/odessa-partlabels
+ExecStartPre=/usr/local/sbin/odessa-rmtfs-efs
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ -e /dev/qcom_rmtfs_mem1 ] && exit 0; sleep 1; done; exit 1'
 EOF
 
@@ -324,6 +383,25 @@ ExecStartPre=/usr/local/sbin/odessa-rfs-links
 ExecStart=
 ExecStart=/usr/bin/tqftpserv
 EOF
+
+# pd-mapper: the Ubuntu build only scans /lib/firmware/updates/<dirname>
+# (dirname of /sys/class/remoteproc/*/firmware).  The PD maps must be there,
+# and the service must wait for the remoteproc device, which appears ~12 s
+# after boot when q6v5_pas probes.
+install -d "$R/lib/firmware/updates"
+if [ -f "$R/lib/firmware/modemr.jsn" ]; then
+    install -m 644 "$R/lib/firmware/modemr.jsn" "$R/lib/firmware/modemuw.jsn" \
+        "$R/lib/firmware/updates/"
+fi
+mkdir -p "$R/etc/systemd/system/pd-mapper.service.d"
+cat > "$R/etc/systemd/system/pd-mapper.service.d/override.conf" <<'PDMAPPER_EOF'
+[Unit]
+StartLimitIntervalSec=0
+[Service]
+Restart=always
+RestartSec=2
+ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 60 ] && [ ! -e /sys/class/remoteproc/remoteproc0/firmware ]; do i=$((i+1)); sleep 1; done; exit 0'
+PDMAPPER_EOF
 
 # --- SSH-only console: blank the framebuffer after boot --------------------
 # There is no backlight class with simpledrm, so this clears the scanout to
@@ -361,10 +439,13 @@ chmod 755 "$R/usr/local/sbin/odessa-screen-off.sh"
 cat > "$R/etc/systemd/system/odessa-screen-off.service" <<'EOF'
 [Unit]
 Description=Blank the framebuffer console for SSH-only operation
-After=systemd-user-sessions.service
+After=systemd-user-sessions.service systemd-backlight@backlight:backlight.service
+Before=getty@tty1.service
 
 [Service]
 Type=oneshot
+# The WLED device appears with the SPMI bus; do not race it.
+ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 50 ] && [ ! -e /sys/class/backlight/backlight/brightness ]; do i=$((i+1)); sleep 0.1; done; exit 0'
 ExecStart=/usr/local/sbin/odessa-screen-off.sh
 RemainAfterExit=yes
 
@@ -383,6 +464,9 @@ ln -sf /etc/systemd/system/battery-guard.timer "$R/etc/systemd/system/timers.tar
 ln -sf /etc/systemd/system/odessa-screen-off.service "$R/etc/systemd/system/multi-user.target.wants/odessa-screen-off.service"
 # local console login is not usable (no keyboard); SSH is the access path
 ln -sf /dev/null "$R/etc/systemd/system/getty@tty1.service"
+# systemd-backlight restores a saved brightness at boot and would undo the
+# screen-off service. Mask the instance for the WLED backlight.
+ln -sf /dev/null "$R/etc/systemd/system/systemd-backlight@backlight:backlight.service"
 # no networkd in this rootfs; drop leftovers if a previous run added them
 rm -f "$R/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" \
       "$R/etc/systemd/system/sockets.target.wants/systemd-networkd.socket" 2>/dev/null || true
@@ -395,9 +479,12 @@ sysfs           /sys          sysfs   defaults          0 0
 tmpfs           /tmp          tmpfs   defaults          0 0
 EOF
 
-# --- init (the base image ships no init at all) -----------------------------
-# Ubuntu Base is a container rootfs: no systemd, no /sbin/init. We install a
-# small busybox-based init; systemd can be added later via apt on the device.
+# --- init (only for base images without any init) --------------------------
+# Ubuntu Base is a container rootfs without systemd. The release payload,
+# however, already contains real systemd; /usr/sbin/init is a symlink to
+# /lib/systemd/systemd there, so writing to it would overwrite the systemd
+# binary. Only install the bring-up init when no systemd is present.
+if [ ! -e "$R/usr/lib/systemd/systemd" ]; then
 cat > "$R/usr/sbin/init" <<'EOF'
 #!/bin/sh
 # odessa Ubuntu bring-up init (PID 1)
@@ -442,6 +529,116 @@ done
 EOF
 chmod 755 "$R/usr/sbin/init"
 # /sbin is a symlink to usr/sbin in this image, so /sbin/init resolves automatically.
+elif head -c 10 "$R/usr/lib/systemd/systemd" 2>/dev/null | grep -q '^#!/bin/sh'; then
+    # a previous build overwrote the systemd binary through the
+    # /usr/sbin/init symlink.  Drop the wrapper (and the now dangling init
+    # symlinks) so rootfs/install-to-device.sh installs real systemd from
+    # the bundled arm64 debs on the device.
+    echo "removing stale bring-up init wrapper from the payload"
+    rm -f "$R/lib/systemd/systemd" "$R/sbin/init" "$R/usr/sbin/init"
+else
+    echo "systemd present ($(head -c 4 "$R/usr/lib/systemd/systemd" | tail -c 3))"
+fi
+
+# --- vendor firmware provisioning (modem + WLAN) --------------------------
+# The vendor partition is read-only and always present; expose its firmware
+# through /lib/firmware before the modem is started.
+install -m 755 "$REPO/rootfs/vendor/odessa-fw-provision.sh" \
+    "$R/usr/local/sbin/odessa-fw-provision"
+cat > "$R/etc/systemd/system/odessa-fw-provision.service" <<'FWEOF'
+[Unit]
+Description=Expose vendor modem/WLAN firmware through /lib/firmware
+After=local-fs.target
+Before=rmtfs.service pd-mapper.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/odessa-fw-provision
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+FWEOF
+install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
+ln -sfn /etc/systemd/system/odessa-fw-provision.service \
+    "$R/etc/systemd/system/multi-user.target.wants/odessa-fw-provision.service"
+
+# --- modem userspace (rmtfs, tqftpserv, qrtr) + pd-mapper ---------------
+# The base payload has no arm64 dpkg for these; extract the bundled debs
+# directly into the tree and enable their units.
+for d in "$REPO"/rootfs/debs/libqrtr1_*_arm64.deb \
+         "$REPO"/rootfs/debs/rmtfs_*_arm64.deb \
+         "$REPO"/rootfs/debs/tqftpserv_*_arm64.deb \
+         "$REPO"/rootfs/debs/qrtr-tools_*_arm64.deb; do
+    [ -f "$d" ] || continue
+    dpkg-deb -x "$d" "$R"
+done
+install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
+for u in rmtfs pd-mapper tqftpserv; do
+    if [ -e "$R/usr/lib/systemd/system/$u.service" ]; then
+        ln -sfn "/usr/lib/systemd/system/$u.service" \
+            "$R/etc/systemd/system/multi-user.target.wants/$u.service"
+    fi
+done
+# pd-mapper: the distro binary does not find the vendor maps on this system,
+# ship the self-built one with a dependency-free unit (see wlan/pd-mapper)
+install -m 755 "$REPO/wlan/pd-mapper/pd-mapper" "$R/usr/bin/pd-mapper"
+install -m 644 "$REPO/wlan/pd-mapper/pd-mapper.service" \
+    "$R/etc/systemd/system/pd-mapper.service"
+ln -sfn /etc/systemd/system/pd-mapper.service \
+    "$R/etc/systemd/system/multi-user.target.wants/pd-mapper.service"
+
+# --- Wi-Fi (WCN3990/ath10k), see wlan/README.md ---------------------------
+WLAN=$REPO/wlan
+KREL=6.12.0
+if [ -d "$WLAN" ]; then
+    for m in smmu_probe wlan_rails mmi_unit_info; do
+        [ -f "$WLAN/modules/$m.ko" ] || {
+            echo "missing $WLAN/modules/$m.ko - run ./wlan/modules/build-modules.sh" >&2
+            exit 1
+        }
+    done
+    install -d -m 755 "$R/usr/local/sbin" "$R/lib/modules/$KREL/extra" \
+        "$R/opt/re-tools" "$R/lib/firmware/ath10k/WCN3990/hw1.0"
+    install -m 755 "$WLAN/tools/insmod_static" "$R/usr/local/sbin/insmod_static"
+    for m in smmu_probe wlan_rails mmi_unit_info; do
+        install -m 644 "$WLAN/modules/$m.ko" "$R/lib/modules/$KREL/extra/"
+    done
+    for t in iw wpa_supplicant wpa_cli; do
+        install -m 755 "$WLAN/tools/$t" "$R/opt/re-tools/"
+    done
+    install -m 644 "$WLAN/firmware/firmware-5.bin" \
+        "$R/lib/firmware/ath10k/WCN3990/hw1.0/firmware-5.bin"
+    install -m 644 "$WLAN/firmware/board-2.bin" \
+        "$R/lib/firmware/ath10k/WCN3990/hw1.0/board-2.bin"
+    install -m 644 "$WLAN/firmware/regulatory.db" \
+        "$WLAN/firmware/regulatory.db.p7s" "$R/lib/firmware/"
+    for u in wlan-smmu wlan-rails mmi-unit-info; do
+        install -m 644 "$WLAN/units/$u.service" "$R/etc/systemd/system/$u.service"
+        install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
+        ln -sfn "/etc/systemd/system/$u.service" \
+            "$R/etc/systemd/system/multi-user.target.wants/$u.service"
+    done
+    install -d -m 755 "$R/etc/wpa_supplicant"
+    if [ ! -f "$R/etc/wpa_supplicant.conf" ]; then
+        cat > "$R/etc/wpa_supplicant.conf" <<'WPAEOF'
+ctrl_interface=/run/wpa_supplicant
+update_config=1
+# Add your network here, then start:
+#   wpa_supplicant -Dnl80211 -i wlan0 -c /etc/wpa_supplicant.conf -B
+# network={
+#     ssid="SSID"
+#     psk="passphrase"
+#     key_mgmt=WPA-PSK
+#     proto=RSN
+#     pairwise=CCMP
+#     group=CCMP
+# }
+WPAEOF
+        # template only (no credentials); the user sets 0600 after adding a network
+        chmod 644 "$R/etc/wpa_supplicant.conf"
+    fi
+fi
 
 # cloning: no fixed machine-id and no SSH host keys in the image; systemd and
 # dropbear generate them per device on first boot

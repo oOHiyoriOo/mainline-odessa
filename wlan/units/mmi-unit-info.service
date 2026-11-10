@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish Motorola mmi_unit_info SMEM item 134 for the modem
+After=systemd-modules-load.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/insmod_static /lib/modules/6.12.0/extra/mmi_unit_info.ko
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

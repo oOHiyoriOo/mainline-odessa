@@ -5,7 +5,7 @@
 set -eu
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 DTC=${DTC:-$REPO/tools/host/dtc}
-DTS=${DTS:-$REPO/kernel/dts/odessa-6.12-wled.dts}
+DTS=${DTS:-$REPO/kernel/dts/odessa-6.12-modem.dts}
 OUT=${OUT:-$REPO/build/odessa-6.12.dtb}
 mkdir -p "$(dirname "$OUT")"
 "$DTC" -I dts -O dtb -o "$OUT" "$DTS"

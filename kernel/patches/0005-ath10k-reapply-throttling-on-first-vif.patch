@@ -1,0 +1,23 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -26,6 +26,7 @@
+ #include "wmi-ops.h"
+ #include "wow.h"
+ #include "leds.h"
++#include "thermal.h"
+ 
+ /*********/
+ /* Rates */
+@@ -5711,6 +5712,12 @@
+ 	list_add(&arvif->list, &ar->arvifs);
+ 	spin_unlock_bh(&ar->data_lock);
+ 
++	/* Apply a thermal state configured before the first interface; quiet
++	 * mode requires an existing vdev on WCN3990.
++	 */
++	if (list_is_singular(&ar->arvifs))
++		ath10k_thermal_set_throttling(ar);
++
+ 	/* It makes no sense to have firmware do keepalives. mac80211 already
+ 	 * takes care of this with idle connection polling.
+ 	 */

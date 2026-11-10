@@ -1,0 +1,1 @@
+savedcmd_/workspace/odessa-linux-6.12/wlan/modules/mmi_unit_info.mod := printf '%s\n'   mmi_unit_info.o | awk '!x[$$0]++ { print("/workspace/odessa-linux-6.12/wlan/modules/"$$0) }' > /workspace/odessa-linux-6.12/wlan/modules/mmi_unit_info.mod

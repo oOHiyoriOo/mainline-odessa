@@ -99,7 +99,80 @@ scripts). The installer:
 If the tarball already contains `/usr/lib/systemd/systemd`, the deb step is
 skipped.
 
-## 7. Sanitizing a snapshot
+## 7. Wi-Fi (WCN3990 / ath10k)
+
+The kernel build applies three ath10k fixes automatically
+(`kernel/patches/0004..0006`, idempotent greps in `kernel/build-kernel.sh`):
+
+| Patch | Effect |
+|---|---|
+| 0004 | Do not send `PDEV_SET_QUIET_MODE` before a vdev exists; this firmware self-resets on it (`whal reset`, `reset_cause 0x1`). |
+| 0005 | Re-apply a thermal state configured before the first interface, once the vdev exists. |
+| 0006 | Create the BSSID peer before `WMI_VDEV_START` for SNOC station vdevs and reuse it later; without it the FW answers `0xffffffff`. |
+
+The helper modules and firmware files are built/installed by:
+
+```bash
+./kernel/build-kernel.sh          # Image.gz (patches 0001..0006)
+./wlan/modules/build-modules.sh   # smmu_probe.ko, wlan_rails.ko, mmi_unit_info.ko
+make rootfs-tree                  # depends on wlan-modules
+sudo ./rootfs/prepare-rootfs.sh   # installs modules, units, firmware, tools
+```
+
+`prepare-rootfs.sh` installs into the rootfs:
+
+- `/lib/modules/6.12.0/extra/{smmu_probe,wlan_rails,mmi_unit_info}.ko` and
+  `/usr/local/sbin/insmod_static`, enabled via `wlan-smmu.service`,
+  `wlan-rails.service`, `mmi-unit-info.service`;
+- `/lib/firmware/ath10k/WCN3990/hw1.0/{firmware-5.bin,board-2.bin}` and
+  `/lib/firmware/regulatory.db{,.p7s}`;
+- `/opt/re-tools/{iw,wpa_supplicant,wpa_cli}`;
+- `/etc/wpa_supplicant.conf` template (mode 0600).
+
+The firmware metadata `firmware-5.bin` must carry feature bit 18
+(`MGMT_TX_BY_REF`); `wlan/firmware/patch-firmware-features.sh` patches an
+existing file idempotently (`00 00 08` -> `00 00 0c`). `wlanmdsp.mbn` and the
+vendor BDF still come from the modem partition via the existing RFS links.
+
+Bring-up on the device:
+
+```bash
+ip link set wlan0 up
+iw dev wlan0 scan
+# network={ ssid="..." psk="..." key_mgmt=WPA-PSK proto=RSN pairwise=CCMP group=CCMP }
+wpa_supplicant -Dnl80211 -i wlan0 -c /etc/wpa_supplicant.conf -B
+udhcpc -i wlan0            # or ip addr add/route
+iw dev wlan0 link
+```
+
+`make check-rootfs` verifies modules, units, firmware (including the `0x0c`
+feature byte), regdb and tools.
+
+### Modem userspace and pd-mapper
+
+Wi-Fi additionally needs the modem's userspace stack. `rootfs/prepare-rootfs.sh`
+extracts the bundled arm64 debs (`rootfs/debs/{libqrtr1,rmtfs,tqftpserv,
+qrtr-tools}`) into the tree and enables their units.
+
+`protection-domain-mapper` from the distro reports `no pd maps available` on
+this system (verified twice, two versions), which leaves the WLAN PD
+unloaded (no QRTR service `0x45`, no `wlan0`). The repository therefore ships
+a self-built static `pd-mapper` (`wlan/pd-mapper/`, source
+`linux-msm/pd-mapper`, lzma support removed) plus a unit without the
+`qrtr-ns` dependency; `prepare-rootfs.sh` installs both.
+
+`odessa-fw-provision.service` mounts `/vendor/firmware_mnt` (read-only) and
+**copies** `modem.*`, `wlanmdsp.mbn` and the `.jsn` maps into `/lib/firmware`
+— pd-mapper only considers regular files, symlinks are ignored.
+
+### Docker (optional)
+
+`extras/docker/install-docker-static.sh <docker-<ver>.tgz>` installs the
+static Docker Engine (verified: 28.5.1, overlay2, containers run). The rootfs
+payload ships no `iptables`, so the unit starts with
+`--iptables=false --bridge=none` and containers use `--network host`.
+
+## 8. Sanitizing a snapshot
 
 Never delete keys or logs on the running system. Snapshot raw, sanitize on the
 host:

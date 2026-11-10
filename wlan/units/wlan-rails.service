@@ -1,0 +1,12 @@
+[Unit]
+Description=odessa WLAN rail voltages (stock icnss values)
+After=systemd-modules-load.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/insmod_static /lib/modules/6.12.0/extra/wlan_rails.ko
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

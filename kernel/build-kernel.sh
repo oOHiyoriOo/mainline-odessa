@@ -41,6 +41,16 @@ fi
 if [ ! -f "$SRC/drivers/power/supply/odessa_chg.c" ]; then
     ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0003-odessa-charger.patch" )
 fi
+# Wi-Fi (WCN3990/ath10k) fixes, see docs/BUILD.md section 7
+if ! grep -q "skipping quiet mode, no vdev exists yet" "$SRC/drivers/net/wireless/ath/ath10k/thermal.c"; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0004-ath10k-snoc-skip-quiet-mode-before-vdev.patch" )
+fi
+if ! grep -q "ath10k_thermal_set_throttling(ar);" "$SRC/drivers/net/wireless/ath/ath10k/mac.c"; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0005-ath10k-reapply-throttling-on-first-vif.patch" )
+fi
+if ! grep -q "failed to pre-create BSSID peer" "$SRC/drivers/net/wireless/ath/ath10k/mac.c"; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0006-ath10k-snoc-sta-bssid-peer-before-vdev-start.patch" )
+fi
 
 echo "== configure"
 cp -f "$REPO/kernel/config-6.12-odessa" "$SRC/.config"

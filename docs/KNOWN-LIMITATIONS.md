@@ -10,13 +10,15 @@ booting, storing data, or SSH access.
 rails. dmesg shows `ufshcd_populate_vreg: Unable to find ... assuming enabled`.
 The practical impact is that runtime PM / suspend is not usable.
 
-## No kernel modules
+## Kernel modules
 
-The kernel is built monolithic (no `/lib/modules`). `systemd-modules-load`
-is `inactive` by design (the 26.04 base shipped a dangling
-`/etc/modules-load.d/modules.conf`, which is removed by
-`sanitize-rootfs.sh`). Loading modules at runtime is not possible without a
-kernel rebuild.
+The kernel is monolithic except for three out-of-tree helper modules shipped
+in `/lib/modules/6.12.0/extra/` (`smmu_probe`, `wlan_rails`,
+`mmi_unit_info`; loaded by their systemd units). They are built by
+`wlan/modules/build-modules.sh` against the same kernel tree.
+`systemd-modules-load` stays inactive by design (the 26.04 base shipped a
+dangling `/etc/modules-load.d/modules.conf`, removed by
+`sanitize-rootfs.sh`); arbitrary third-party modules still need a rebuild.
 
 ## No udev
 
@@ -24,42 +26,28 @@ The rootfs has no `udev` package; `/dev` is devtmpfs. Device nodes required by
 the boot path (UFS, console) are created by the kernel. Tools that rely on
 udev events (hotplug, persistent names) are unavailable.
 
-## Wi-Fi / modem (blocked)
+## Wi-Fi status
 
-WCN3990 is not usable yet. The kernel has ATH10K/ATH10K_SNOC, QRTR and the
-GLINK transport built in, and three GLINK edges (modem/adsp/cdsp) register,
-but the remote side never opens an `IPCRTR` channel. Without a QRTR endpoint
-`ath10k_qmi` waits 30 s and fails; there is no WLFW service. SMEM IDs
-(478/479/480), mailbox offset 12 and IRQ 449 match the vendor DTS.
+Wi-Fi works (verified 2026-11-10): `wlan0` up, scan, WPA2-PSK association,
+DHCP and ICMP in the local network. Three firmware/driver quirks had to be
+fixed, all shipped in this repo:
 
-Root cause (2026-11-08): the modem remote processor starts, registers its
-QRTR services (including service 49 "IPA control service"), and then asserts
-after ~0.7 s:
+1. `PDEV_SET_QUIET_MODE` before the first vdev made the firmware self-reset
+   (`kernel/patches/0004`, `0005`);
+2. the management-TX path needs firmware feature bit 18 (`MGMT_TX_BY_REF`) in
+   `firmware-5.bin` (`wlan/firmware/`);
+3. `WMI_VDEV_START` for the station vdev is rejected unless a BSSID peer
+   exists beforehand (`kernel/patches/0006`).
 
-```
-qcom_q6v5_pas 4080000.qcom,mss: fatal error received:
-    :0:EX:kernel:0:rf:16e:PC=c06c9b50
-```
+Remaining limitations:
 
-Static analysis of the vendor Hexagon image (`modem.b11`, vaddr 0xc04aa000,
-PC offset 0x21fb50) shows the fault is a data load in the modem's own
-pool-C block resolver (pool base `0xa1600000`, end `0xa1682000`; base/end
-table in `modem.b17`). Pools A and B are readable for the same index; pool C
-is not mapped/backed at runtime.
-
-As part of this work a minimal mainline IPA driver was integrated (IPA v4.2,
-register window `0x1e40000`, PAS id 15, QMI service registers). It runs in
-QMI-only mode because the first IPA/GSI immediate command wedges the NoC; the
-modem still asserts, and the fault is in the modem's own address space, so no
-AP-side fix was identified.
-
-The device-tree reserved-memory sizes (`modem_region` 0x8400000,
-`wlan_msa` 0x180000, `ipa_fw` 0x10000, `ipa_gsi` 0x5000) are byte-identical
-to the stock Motorola DTB and DTBO entry 2, so a DT size mismatch was ruled
-out. Enabling the apps-SMMU (mainline arm-smmu via compatible
-`"qcom,sdm670-smmu-500", "qcom,smmu-500", "arm,mmu-500"`) makes the early
-boot hang because the MMU-500 reset wipes bootloader state; this path was
-abandoned. No modem crash-dump infrastructure was built.
+- 5 GHz operation was not exercised (no 5 GHz BSS in range during bring-up);
+  the regulatory DB is installed and `country DE` applies.
+- The MAC address is random per boot (the firmware reports
+  `00:00:00:00:00:00`); a stable MAC would need a device-tree
+  `local-mac-address`.
+- No NetworkManager/iwd; association uses `wpa_supplicant` and the shipped
+  static `iw`/`wpa_cli` (see `wlan/README.md`).
 
 ## Network
 

@@ -1,0 +1,46 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -736,6 +736,20 @@
+ 
+ 	lockdep_assert_held(&ar->conf_mutex);
+ 
++	/* A peer may already exist because it had to be created before
++	 * vdev_start.  Bind the station to it instead of sending a duplicate
++	 * peer-create to the firmware (odessa/WCN3990).
++	 */
++	spin_lock_bh(&ar->data_lock);
++	peer = ath10k_peer_find(ar, vdev_id, addr);
++	if (peer && (!sta || !peer->sta || peer->sta == sta)) {
++		peer->vif = vif;
++		peer->sta = sta;
++		spin_unlock_bh(&ar->data_lock);
++		return 0;
++	}
++	spin_unlock_bh(&ar->data_lock);
++
+ 	/* Each vdev consumes a peer entry as well. */
+ 	if (ar->num_peers + list_count_nodes(&ar->arvifs) >= ar->max_num_peers)
+ 		return -ENOBUFS;
+@@ -8959,6 +8973,22 @@
+ 		return -EBUSY;
+ 	}
+ 
++	/* odessa/WCN3990: WMI_VDEV_START for a station vdev is rejected unless
++	 * a peer for the BSSID exists.  Monitor vdevs start without one, AP
++	 * vdevs create their peer before the start as well.
++	 */
++	if (ar->hif.bus == ATH10K_BUS_SNOC &&
++	    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
++	    !is_zero_ether_addr(link_conf->bssid)) {
++		int pret = ath10k_peer_create(ar, vif, NULL, arvif->vdev_id,
++					      link_conf->bssid,
++					      WMI_PEER_TYPE_DEFAULT);
++
++		if (pret)
++			ath10k_warn(ar, "failed to pre-create BSSID peer %pM: %d\n",
++				    link_conf->bssid, pret);
++	}
++
+ 	ret = ath10k_vdev_start(arvif, &ctx->def);
+ 	if (ret) {
+ 		ath10k_warn(ar, "failed to start vdev %i addr %pM on freq %d: %d\n",

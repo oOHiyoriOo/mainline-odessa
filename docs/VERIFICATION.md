@@ -821,3 +821,52 @@ Two consequences: the three 4 MiB arenas are *not* part of this static table
 (they are the driver's heap, see above), and the TLMM record's window
 `0xa1500000..0xa2100000` overlaps all three arenas — so TLMM is not mapped as
 one 12 MiB block in this run, otherwise the third probe could not fault.
+
+## Wi-Fi (WCN3990), 2026-11-10
+
+Checks performed on the device (mainline 6.12, slot b), after a clean reboot:
+
+```text
+$ iw dev wlan0 link
+Connected to <AP-BSSID> (on wlan0)
+        SSID: <SSID>
+        freq: 2462.0
+        signal: -48 dBm
+        rx bitrate: 72.2 MBit/s MCS 7 short GI
+        bss flags: short-preamble short-slot-time
+        dtim period: 1
+        beacon int: 100
+
+$ wpa_cli -i wlan0 status
+wpa_state=COMPLETED
+key_mgmt=WPA2-PSK
+pairwise_cipher=CCMP
+
+$ udhcpc -i wlan0
+udhcpc: lease of <LAN-ADDR> obtained from <LAN-GW>
+
+$ ping -c 20 <LAN-GW>
+20 packets transmitted, 20 received, 0% packet loss (13-21 ms)
+
+$ cat /sys/class/remoteproc/remoteproc0/state
+running
+```
+
+Kernel evidence:
+
+```text
+ath10k_snoc 18800000.qcom,icnss: vdev-start-response status 0x00000000
+ath10k_snoc 18800000.qcom,icnss: mac vdev 0 up (associated) bssid <AP-BSSID> aid 2
+```
+
+Negative checks that would indicate regressions:
+
+```text
+# must be absent:
+dmesg | grep "failed to transmit management frame via WMI"   # -95 => feature bit 18 missing
+dmesg | grep "firmware crashed"                               # => quiet-mode guard missing
+dmesg | grep "vdev-start-response reports status error"       # => BSSID peer patch missing
+```
+
+`make check-rootfs` asserts the matching rootfs content (feature byte `0x0c`,
+modules, units, firmware, regdb, tools).

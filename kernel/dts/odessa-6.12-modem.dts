@@ -4430,16 +4430,11 @@
 		};
 
 		qcom,qmp-aop@c300000 {
-			compatible = "qcom,qmp-mbox";
-			reg = <0xc300000 0x1000 0x17c0000c 0x04>;
-			reg-names = "msgram\0irq-reg-base";
-			qcom,irq-mask = <0x01>;
+			compatible = "qcom,aoss-qmp";
+			reg = <0xc300000 0x1000>;
 			interrupts = <0x00 0x185 0x01>;
-			label = "aop";
-			qcom,early-boot;
-			priority = <0x00>;
-			mbox-desc-offset = <0x00>;
-			#mbox-cells = <0x01>;
+			mboxes = <0x94 0x00>;
+			#clock-cells = <0x00>;
 			phandle = <0x1c>;
 		};
 
@@ -5901,6 +5896,7 @@
 			qcom,pas-id = <0x04>;
 			qcom,smem-id = <0x1a5>;
 			qcom,signal-aop;
+			qcom,qmp = <0x1c>;
 			qcom,minidump-id = <0x03>;
 			qcom,aux-minidump-ids = <0x04>;
 			qcom,complete-ramdump;
@@ -5964,10 +5960,15 @@
 			reg-names = "membase";
 			interrupts = <0x00 0x19e 0x04 0x00 0x19f 0x04 0x00 0x1a0 0x04 0x00 0x1a1 0x04 0x00 0x1a2 0x04 0x00 0x1a3 0x04 0x00 0x1a4 0x04 0x00 0x1a5 0x04 0x00 0x1a6 0x04 0x00 0x1a7 0x04 0x00 0x1a8 0x04 0x00 0x1a9 0x04>;
 			qcom,smmu-s1-bypass;
+			/* DIAG(odessa): stock icnss sends no host cap at all */
+			qcom,snoc-host-cap-skip-quirk;
 			qcom,wlan-msa-memory = <0x100000>;
 			qcom,wlan-msa-fixed-region = <0xba>;
 			memory-region = <0xba>;
-			qcom,msa-fixed-perm;
+			/* DIAG(odessa): stock icnss calls icnss_assign_msa_perm_all()
+			 * in server_arrive; the flag made ath10k skip the SCM assign.
+			 */
+			/* qcom,msa-fixed-perm removed (see DIAG note above) */
 			status = "okay";
 			vdd-0.8-cx-mx-supply = <&vreg_wlan_cx>;
 			vdd-1.8-xo-supply = <&vreg_wlan_xo>;
@@ -13939,10 +13940,11 @@
 		};
 
 		pinctrl@3400000 {
-			compatible = "qcom,sdmmagpie-pinctrl";
-			reg = <0x3400000 0xdc2000 0x17c000f0 0x60>;
-			reg-names = "pinctrl\0spi_cfg";
+			compatible = "qcom,sm7150-tlmm";
+			reg = <0x03500000 0x300000>, <0x03900000 0x300000>, <0x03d00000 0x300000>;
+			reg-names = "west\0north\0south";
 			interrupts = <0x00 0xd0 0x00>;
+			gpio-reserved-ranges = <0x00 0x04>;
 			gpio-controller;
 			#gpio-cells = <0x02>;
 			interrupt-controller;

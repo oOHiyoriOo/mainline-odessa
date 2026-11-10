@@ -17,8 +17,12 @@
 | `dtbo_a/b` | stock | no |
 
 The Motorola bootloader refuses `fastboot flash userdata` and
-`fastboot flash super`. That is why the rootfs is embedded in the boot image
-and written by the initramfs on first boot.
+`fastboot flash super`. The release therefore ships two pieces: a small
+boot image with the prep initramfs (USB-NCM + SSH) and the rootfs payload,
+which `rootfs/install-to-device.sh` writes to `userdata` over SSH.
+(An image with the payload embedded would exceed the 64 MiB `boot_b`
+partition; the initramfs supports it via `PAYLOAD=... make initramfs` if a
+smaller payload is used.)
 
 ## Flash
 
@@ -27,16 +31,14 @@ cd odessa-linux-6.12
 ./flash-odessa.sh
 ```
 
-The script prints the image hash, requires `yes`, then runs:
+The script prints the hashes, requires `yes`, flashes `boot_b`, boots the
+prep initramfs, wipes `userdata` via `mke2fs` and installs
+`artifacts/rootfs-install.tar.gz` over SSH (`rootfs/install-to-device.sh`),
+then reboots into the installed system. For a re-install on a device that
+still boots the old rootfs, the script removes `/etc/odessa-ready` and
+reboots into the initramfs first.
 
-```bash
-fastboot erase userdata
-fastboot flash boot_b artifacts/odessa-6.12-boot.img
-fastboot set_active b
-fastboot reboot
-```
-
-The image is 62.27 MiB and fits the 64 MiB boot partition (2.43 MB reserve).
+The boot image is ~22 MiB and fits the 64 MiB `boot_b` partition.
 
 ## First boot
 

@@ -1,0 +1,19 @@
+--- a/drivers/net/wireless/ath/ath10k/thermal.c
++++ b/drivers/net/wireless/ath/ath10k/thermal.c
+@@ -139,6 +139,16 @@
+ 	if (ar->state != ATH10K_STATE_ON)
+ 		return;
+ 
++	/* odessa/WCN3990: the vendor firmware asserts and restarts itself if
++	 * PDEV_SET_QUIET_MODE is sent while no vdev exists.  ath10k_start()
++	 * configures thermal throttling before mac80211 adds the first vif.
++	 */
++	if (ar->hif.bus == ATH10K_BUS_SNOC && list_empty(&ar->arvifs)) {
++		ath10k_dbg(ar, ATH10K_DBG_MAC,
++			   "skipping quiet mode, no vdev exists yet\n");
++		return;
++	}
++
+ 	period = ar->thermal.quiet_period;
+ 	duration = (period * ar->thermal.throttle_state) / 100;
+ 	enabled = duration ? 1 : 0;
