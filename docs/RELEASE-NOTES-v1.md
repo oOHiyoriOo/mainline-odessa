@@ -60,7 +60,9 @@ statt verlinkt werden.
 
 ## Wi-Fi Bring-up im Boot (Nachtrag 2026-11-10)
 
-`odessa-wlan.service` uebernimmt Associate + DHCP: `wpa_supplicant` aus
+`odessa-modem.service` startet den MSS-Remoteproc beim Boot (vorher war ein
+manuelles `echo start > /sys/class/remoteproc/remoteproc0/state` noetig, sonst
+erschien `wlan0` nie). `odessa-wlan.service` uebernimmt Associate + DHCP: `wpa_supplicant` aus
 `/etc/wpa_supplicant.conf`, danach busybox-`udhcpc` mit eigenem Hook. Der Hook
 setzt Adresse, **Default-Route** und `/etc/resolv.conf` aus dem Lease und
 wiederholt das bei jedem Renewal; ohne `network=`-Block ist die Unit ein No-op.

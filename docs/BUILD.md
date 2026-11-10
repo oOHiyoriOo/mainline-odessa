@@ -178,12 +178,19 @@ a self-built static `pd-mapper` (`wlan/pd-mapper/`, source
 **copies** `modem.*`, `wlanmdsp.mbn` and the `.jsn` maps into `/lib/firmware`
 — pd-mapper only considers regular files, symlinks are ignored.
 
+`odessa-modem.service` then starts the MSS remoteproc (`echo start > .../state`),
+ordered after `odessa-fw-provision`, `pd-mapper`, `rmtfs` and the ath10k helper
+modules and before `odessa-wlan`. The kernel only registers the remoteproc on
+its own, so without this unit `wlan0` appears only after a manual start.
+
 ### Docker (optional)
 
 `extras/docker/install-docker-static.sh <docker-<ver>.tgz>` installs the
-static Docker Engine (verified: 28.5.1, overlay2, containers run). The rootfs
-payload ships no `iptables`, so the unit starts with
-`--iptables=false --bridge=none` and containers use `--network host`.
+static Docker Engine (verified: 28.5.1, overlay2, containers run). The payload
+ships the iptables-nft userspace (`rootfs/debs/iptables_*` + libs) and the
+kernel has `NF_TABLES`/`IP_NF_*`/`BRIDGE_NETFILTER`/`VETH` =y, so `dockerd`
+starts with bridge networking: `docker0` 172.17.0.1/16, NAT and container
+`--network` work out of the box.
 
 ## 8. Sanitizing a snapshot
 
