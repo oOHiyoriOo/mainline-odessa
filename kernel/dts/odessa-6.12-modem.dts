@@ -6032,6 +6032,15 @@
 			};
 		};
 
+		vreg_bt_io: regulator-bt-io {
+			compatible = "regulator-fixed";
+			regulator-name = "bt-vdd-io";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-boot-on;
+			regulator-always-on;
+		};
+
 		vreg_wlan_cx: regulator-wlan-cx {
 			compatible = "regulator-fixed";
 			regulator-name = "vdd-0.8-cx-mx";
@@ -8945,8 +8954,13 @@
 		};
 
 		qcom,qupv3_0_geni_se@0x8c0000 {
-			compatible = "qcom,qupv3-geni-se";
+			compatible = "qcom,geni-se-qup";
 			reg = <0x8c0000 0x2000>;
+			clock-names = "m-ahb\0s-ahb";
+			clocks = <0x27 0x67 0x27 0x68>;
+			#address-cells = <0x01>;
+			#size-cells = <0x01>;
+			ranges;
 			qcom,bus-mas-id = <0x97>;
 			qcom,bus-slv-id = <0x200>;
 			qcom,iommu-s1-bypass;
@@ -8956,6 +8970,34 @@
 				compatible = "qcom,qupv3-geni-se-cb";
 				iommus = <0x30 0x203 0x00>;
 				phandle = <0x347>;
+			};
+
+			qcom,qup_uart@0x88c000 {
+				compatible = "qcom,geni-uart";
+				reg = <0x88c000 0x4000>;
+				reg-names = "se_phys";
+				clock-names = "se";
+				clocks = <0x27 0x4a>;
+				pinctrl-names = "default\0sleep";
+				pinctrl-0 = <0x175 0x176 0x177>;
+				pinctrl-1 = <0x175 0x176 0x177>;
+				interrupts-extended = <0x1a 0x00 0x25c 0x00 0x178 0x29 0x00>;
+				status = "ok";
+				qcom,wakeup-byte = <0xfd>;
+				/* this SE has no dmas/QUP-DMA path on the vendor DT;
+				 * see kernel/patches/0007-qcom-geni-uart-fifo-mode.patch */
+				qcom,geni-fifo;
+				phandle = <0x34d>;
+
+				bluetooth {
+					compatible = "qcom,wcn3990-bt";
+					vddio-supply = <&vreg_bt_io>;
+					vddxo-supply = <&vreg_wlan_xo>;
+					vddrf-supply = <&vreg_wlan_rfa>;
+					vddch0-supply = <&vreg_wlan_ch0>;
+					max-speed = <0x30d400>;
+					firmware-name = "crnv21.bin";
+				};
 			};
 		};
 
@@ -9063,22 +9105,6 @@
 			qcom,wrapper-core = <0x16c>;
 			status = "disabled";
 			phandle = <0x34c>;
-		};
-
-		qcom,qup_uart@0x88c000 {
-			compatible = "qcom,msm-geni-serial-hs";
-			reg = <0x88c000 0x4000>;
-			reg-names = "se_phys";
-			clock-names = "se-clk\0m-ahb\0s-ahb";
-			clocks = <0x27 0x4a 0x27 0x67 0x27 0x68>;
-			pinctrl-names = "default\0sleep";
-			pinctrl-0 = <0x175 0x176 0x177>;
-			pinctrl-1 = <0x175 0x176 0x177>;
-			interrupts-extended = <0x1a 0x00 0x25c 0x00 0x178 0x29 0x00>;
-			status = "ok";
-			qcom,wakeup-byte = <0xfd>;
-			qcom,wrapper-core = <0x16c>;
-			phandle = <0x34d>;
 		};
 
 		qcom,qup_uart@0x890000 {
@@ -22758,7 +22784,7 @@
 		i2c1 = "/soc/i2c@0xa84000";
 		i2c2 = "/soc/i2c@0xa8c000";
 		serial0 = "/soc/qcom,qup_uart@0xa88000";
-		hsuart0 = "/soc/qcom,qup_uart@0x88c000";
+		hsuart0 = "/soc/qcom,qupv3_0_geni_se@0x8c0000/qcom,qup_uart@0x88c000";
 		sdhc1 = "/soc/sdhci@7c4000";
 		sdhc2 = "/soc/sdhci@8804000";
 		ufshc1 = "/soc/ufshc@1d84000";

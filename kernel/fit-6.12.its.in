@@ -24,7 +24,9 @@
 			type = "flat_dt";
 			arch = "arm64";
 			compression = "none";
-			load = <0x0 0x9B000000>;
+			/* 0x9C000000-0x9F800000 is reserved (splash/qseecom);
+			 * keep the FDT below the initramfs at 0xA0000000. */
+			load = <0x0 0x9F800000>;
 			hash-1 { algo = "sha256"; };
 		};
 

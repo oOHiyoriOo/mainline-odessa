@@ -165,6 +165,33 @@ check_file "$R/lib/firmware/ath10k/WCN3990/hw1.0/firmware-5.bin" 30
 check_file "$R/lib/firmware/ath10k/WCN3990/hw1.0/board-2.bin" 100000
 check_file "$R/lib/firmware/regulatory.db" 1000
 check_file "$R/lib/firmware/regulatory.db.p7s" 500
+
+# --- Bluetooth (WCN3990 over GENI SE3) -------------------------------------
+for f in crbtfw21.tlv crnv21.bin; do
+	check_file "$R/lib/firmware/qca/$f" 1000
+done
+for m in ecc ecdh_generic bluetooth btqca btbcm hci_uart rfcomm hidp; do
+	check_file "$R/lib/modules/6.12.0/extra/$m.ko" 1000
+done
+check_exec "$R/usr/local/sbin/bt-load.sh"
+check_file "$R/etc/systemd/system/bt-stack.service" 50
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/bt-stack.service" ]; then
+	ok "bt-stack enabled"
+else
+	bad "bt-stack not enabled"
+fi
+# the stack must come up after the PMIC rails are in their vendor windows
+if grep -q '^After=wlan-rails.service' "$R/etc/systemd/system/bt-stack.service" 2>/dev/null; then
+	ok "bt-stack ordered after wlan-rails"
+else
+	bad "bt-stack is not ordered after wlan-rails.service"
+fi
+# and the UART must run in FIFO mode (no QUP DMA path in this vendor DTB)
+if grep -q 'qcom,geni-fifo' "$REPO/kernel/dts/odessa-6.12-modem.dts" 2>/dev/null; then
+	ok "BT UART uses qcom,geni-fifo"
+else
+	bad "qcom,geni-fifo missing from the BT UART node"
+fi
 for t in iw wpa_supplicant wpa_cli; do
 	check_file "$R/opt/re-tools/$t" 100000
 done

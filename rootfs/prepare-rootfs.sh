@@ -679,6 +679,32 @@ if [ -d "$WLAN" ]; then
         ln -sfn "/etc/systemd/system/$u.service" \
             "$R/etc/systemd/system/multi-user.target.wants/$u.service"
     done
+    # --- Bluetooth (WCN3990 over GENI SE3), see docs/HARDWARE.md -----------
+    # The chip only boots once pm6150l_l1/l2 are in their vendor windows, which
+    # wlan-rails.service does from userspace.  BT is therefore a module set that
+    # is loaded by bt-stack.service after wlan-rails.service, and the UART runs
+    # in FIFO mode (kernel/patches/0007-qcom-geni-uart-fifo-mode.patch) because
+    # this vendor DTB exposes no QUP DMA/NoC path.
+    BT=$REPO/bt
+    for m in ecc ecdh_generic bluetooth btqca btbcm hci_uart rfcomm hidp; do
+        [ -f "$BT/modules/$m.ko" ] || {
+            echo "missing $BT/modules/$m.ko - run ./bt/modules/build-modules.sh" >&2
+            exit 1
+        }
+    done
+    install -d -m 755 "$R/lib/firmware/qca"
+    install -m 644 "$BT/firmware/crbtfw21.tlv" "$BT/firmware/crnv21.bin" \
+        "$R/lib/firmware/qca/"
+    for m in ecc ecdh_generic bluetooth btqca btbcm hci_uart rfcomm hidp; do
+        install -m 644 "$BT/modules/$m.ko" "$R/lib/modules/$KREL/extra/"
+    done
+    install -m 755 "$BT/tools/bt-load.sh" "$R/usr/local/sbin/bt-load.sh"
+    install -m 644 "$BT/units/bt-stack.service" \
+        "$R/etc/systemd/system/bt-stack.service"
+    install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
+    ln -sfn /etc/systemd/system/bt-stack.service \
+        "$R/etc/systemd/system/multi-user.target.wants/bt-stack.service"
+
     install -d -m 755 "$R/etc/wpa_supplicant"
     if [ ! -f "$R/etc/wpa_supplicant.conf" ]; then
         cat > "$R/etc/wpa_supplicant.conf" <<'WPAEOF'

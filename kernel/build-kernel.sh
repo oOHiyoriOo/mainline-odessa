@@ -51,6 +51,11 @@ fi
 if ! grep -q "failed to pre-create BSSID peer" "$SRC/drivers/net/wireless/ath/ath10k/mac.c"; then
     ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0006-ath10k-snoc-sta-bssid-peer-before-vdev-start.patch" )
 fi
+# GENI UART: optional FIFO mode instead of the QUP DMA path (odessa BT), see
+# kernel/patches/0007-qcom-geni-uart-fifo-mode.patch
+if ! grep -q "qcom,geni-fifo" "$SRC/drivers/tty/serial/qcom_geni_serial.c"; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0007-qcom-geni-uart-fifo-mode.patch" )
+fi
 
 echo "== configure"
 cp -f "$REPO/kernel/config-6.12-odessa" "$SRC/.config"

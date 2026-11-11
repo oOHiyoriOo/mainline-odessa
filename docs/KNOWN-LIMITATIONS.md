@@ -51,6 +51,29 @@ Remaining limitations:
   until `/etc/wpa_supplicant.conf` contains a `network={}` block (see
   `wlan/README.md`).
 
+## Bluetooth status
+
+Bluetooth works (verified 2026-11-11): the WCN3990 comes up over GENI SE3,
+downloads `qca/crbtfw21.tlv` + `qca/crnv21.bin` and reports
+`QCA setup on UART is completed`; `hci0` exists and is rfkill-unblocked. Two
+non-obvious constraints are documented in `docs/HARDWARE.md`:
+
+1. the BT UART must run in **FIFO mode** (`qcom,geni-fifo`,
+   `kernel/patches/0007`) — the QUP DMA path of this vendor DTB hard-locks the
+   SoC on the first transmit;
+2. the stack is loaded by `bt-stack.service` **after** `wlan-rails.service`,
+   because the chip only answers once `pm6150l_l1/l2` are in their vendor
+   windows.
+
+Remaining limitations:
+
+- **No userspace stack.** BlueZ (`bluetoothd`, `bluetoothctl`) is not part of
+  the image; the controller works at the HCI level only. Installing BlueZ
+  needs package downloads from the network.
+- The BT MAC is whatever the controller reports; `androidboot.btmacaddr` from
+  the bootloader command line is not consumed by mainline.
+- SCO/audio routing through the BTFM Slimbus codec was not exercised.
+
 ## Network
 
 Two links come up at boot:

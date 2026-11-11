@@ -1,0 +1,70 @@
+--- /tmp/qgs.orig	2026-11-11 10:32:48.963998109 +0000
++++ drivers/tty/serial/qcom_geni_serial.c	2026-11-11 10:32:48.980852761 +0000
+@@ -132,6 +132,7 @@
+ 
+ 	unsigned int tx_remaining;
+ 	unsigned int tx_queued;
++	bool fifo_mode;
+ 	int wakeup_irq;
+ 	bool rx_tx_swap;
+ 	bool cts_rts_swap;
+@@ -142,6 +143,7 @@
+ 
+ static const struct uart_ops qcom_geni_console_pops;
+ static const struct uart_ops qcom_geni_uart_pops;
++static const struct uart_ops qcom_geni_uart_fifo_pops;
+ static struct uart_driver qcom_geni_console_driver;
+ static struct uart_driver qcom_geni_uart_driver;
+ 
+@@ -1180,7 +1182,8 @@
+ 	geni_se_config_packing(&port->se, BITS_PER_BYTE, BYTES_PER_FIFO_WORD,
+ 			       false, true, true);
+ 	geni_se_init(&port->se, UART_RX_WM, port->rx_fifo_depth - 2);
+-	geni_se_select_mode(&port->se, port->dev_data->mode);
++	geni_se_select_mode(&port->se, port->fifo_mode ? GENI_SE_FIFO
++						       : port->dev_data->mode);
+ 	port->setup = true;
+ 
+ 	return 0;
+@@ -1634,6 +1637,29 @@
+ 	.pm = qcom_geni_serial_pm,
+ };
+ 
++/*
++ * FIFO-mode ops for UART uses.  Vendors that leave the QUP DMA/NoC path
++ * unconfigured (no dmas/interconnects in the DT) can select this with
++ * "qcom,geni-fifo" so that all transfers go through the SE FIFO registers.
++ */
++static const struct uart_ops qcom_geni_uart_fifo_pops = {
++	.tx_empty = qcom_geni_serial_tx_empty,
++	.stop_tx = qcom_geni_serial_stop_tx_fifo,
++	.start_tx = qcom_geni_serial_start_tx_fifo,
++	.start_rx = qcom_geni_serial_start_rx_fifo,
++	.stop_rx = qcom_geni_serial_stop_rx_fifo,
++	.set_termios = qcom_geni_serial_set_termios,
++	.startup = qcom_geni_serial_startup,
++	.request_port = qcom_geni_serial_request_port,
++	.config_port = qcom_geni_serial_config_port,
++	.shutdown = qcom_geni_serial_shutdown,
++	.flush_buffer = qcom_geni_serial_flush_buffer,
++	.type = qcom_geni_serial_get_type,
++	.set_mctrl = qcom_geni_serial_set_mctrl,
++	.get_mctrl = qcom_geni_serial_get_mctrl,
++	.pm = qcom_geni_serial_pm,
++};
++
+ static int qcom_geni_serial_probe(struct platform_device *pdev)
+ {
+ 	int ret = 0;
+@@ -1672,6 +1698,11 @@
+ 
+ 	uport->dev = &pdev->dev;
+ 	port->dev_data = data;
++	port->fifo_mode = !data->console &&
++			  of_property_read_bool(pdev->dev.of_node,
++						"qcom,geni-fifo");
++	if (port->fifo_mode)
++		uport->ops = &qcom_geni_uart_fifo_pops;
+ 	port->se.dev = &pdev->dev;
+ 	port->se.wrapper = dev_get_drvdata(pdev->dev.parent);
+ 	port->se.clk = devm_clk_get(&pdev->dev, "se");

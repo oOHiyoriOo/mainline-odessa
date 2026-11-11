@@ -14,6 +14,7 @@ static const struct rail rails[] = {
 	{ "pm6150l_l2", 1304000 }, /* vdd-1.3-rfa */
 	{ "pm6150l_l10", 3312000 }, /* vdd-3.3-ch0 */
 	{ "pm6150l_l11", 3312000 }, /* vdd-3.3-ch1 */
+	{ "pm6150_l10",  1800000 }, /* vdd-bt-io (WCN3990 vddio) */
 };
 
 static struct regulator *held[ARRAY_SIZE(rails)];
