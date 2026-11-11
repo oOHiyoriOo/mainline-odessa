@@ -1,0 +1,13 @@
+[Unit]
+Description=Odessa Bluetooth pairing agent (Just Works)
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/bt-agent.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -50,7 +50,9 @@ wait_ssh || { echo "device did not come up at $DEV" >&2; exit 1; }
 # and reboot into the initramfs.
 if $SSH root@"$DEV" "grep -q \" / \" /proc/mounts && grep -q '/dev/sdb24 / ' /proc/mounts" 2>/dev/null; then
     echo "== target booted the installed rootfs; rebooting into the prep initramfs"
-    $SSH root@"$DEV" "rm -f /etc/odessa-ready; sync; reboot -f" || true
+    # the ssh client can hang on the connection reset of the rebooting device
+    timeout 20 $SSH root@"$DEV" "rm -f /etc/odessa-ready; sync; reboot -f" \
+        >/dev/null 2>&1 || true
     sleep 20
     wait_ssh || { echo "device did not return to the initramfs" >&2; exit 1; }
 fi
@@ -61,5 +63,5 @@ KEY="$KEY" DEV="$DEV" "$REPO/rootfs/install-to-device.sh" "$ROOTFS" --yes
 echo "== reboot into the installed system"
 # busybox reboot waits for a real init to handle the signal; with init=/init
 # in the initramfs it is a no-op, so force it.
-$SSH root@"$DEV" "sync; reboot -f" || true
+timeout 20 $SSH root@"$DEV" "sync; reboot -f" >/dev/null 2>&1 || true
 echo "Done. After ~60 s: ssh -i $KEY root@$DEV"

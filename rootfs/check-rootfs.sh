@@ -174,11 +174,25 @@ for m in ecc ecdh_generic bluetooth btqca btbcm hci_uart rfcomm hidp; do
 	check_file "$R/lib/modules/6.12.0/extra/$m.ko" 1000
 done
 check_exec "$R/usr/local/sbin/bt-load.sh"
-check_file "$R/etc/systemd/system/bt-stack.service" 50
-if [ -L "$R/etc/systemd/system/multi-user.target.wants/bt-stack.service" ]; then
-	ok "bt-stack enabled"
+check_exec "$R/usr/local/sbin/bt-set-addr.sh"
+check_exec "$R/usr/local/sbin/bt-agent.sh"
+for u in bt-stack bt-addr bt-agent; do
+	check_file "$R/etc/systemd/system/$u.service" 50
+	if [ -L "$R/etc/systemd/system/multi-user.target.wants/$u.service" ]; then
+		ok "$u enabled"
+	else
+		bad "$u not enabled"
+	fi
+done
+if grep -q 'NoInputNoOutput' "$R/usr/local/sbin/bt-agent.sh" 2>/dev/null; then
+	ok "just-works pairing agent"
 else
-	bad "bt-stack not enabled"
+	bad "bt-agent does not use the NoInputNoOutput capability"
+fi
+if grep -q 'btmacaddr' "$R/usr/local/sbin/bt-set-addr.sh" 2>/dev/null; then
+	ok "public address taken from the bootloader cmdline"
+else
+	bad "bt-set-addr.sh does not read androidboot.btmacaddr"
 fi
 # the stack must come up after the PMIC rails are in their vendor windows
 if grep -q '^After=wlan-rails.service' "$R/etc/systemd/system/bt-stack.service" 2>/dev/null; then

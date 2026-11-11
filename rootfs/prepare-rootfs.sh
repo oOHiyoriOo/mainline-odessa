@@ -757,11 +757,16 @@ if [ -d "$WLAN" ]; then
         install -m 644 "$BT/modules/$m.ko" "$R/lib/modules/$KREL/extra/"
     done
     install -m 755 "$BT/tools/bt-load.sh" "$R/usr/local/sbin/bt-load.sh"
-    install -m 644 "$BT/units/bt-stack.service" \
-        "$R/etc/systemd/system/bt-stack.service"
+    install -m 755 "$BT/tools/bt-set-addr.sh" "$R/usr/local/sbin/bt-set-addr.sh"
+    install -m 755 "$BT/tools/bt-agent.sh" "$R/usr/local/sbin/bt-agent.sh"
+    for u in bt-stack bt-addr bt-agent; do
+        install -m 644 "$BT/units/$u.service" "$R/etc/systemd/system/$u.service"
+    done
     install -d -m 755 "$R/etc/systemd/system/multi-user.target.wants"
-    ln -sfn /etc/systemd/system/bt-stack.service \
-        "$R/etc/systemd/system/multi-user.target.wants/bt-stack.service"
+    for u in bt-stack bt-addr bt-agent; do
+        ln -sfn "/etc/systemd/system/$u.service" \
+            "$R/etc/systemd/system/multi-user.target.wants/$u.service"
+    done
 
     install -d -m 755 "$R/etc/wpa_supplicant"
     if [ ! -f "$R/etc/wpa_supplicant.conf" ]; then

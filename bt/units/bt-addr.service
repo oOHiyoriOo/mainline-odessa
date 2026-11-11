@@ -1,0 +1,12 @@
+[Unit]
+Description=Odessa Bluetooth public address (WCN3990)
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=180
+ExecStart=/usr/local/sbin/bt-set-addr.sh
+
+[Install]
+WantedBy=multi-user.target
