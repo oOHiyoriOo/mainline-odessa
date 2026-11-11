@@ -1,4 +1,4 @@
-# Verification evidence (2026-11-07)
+# Verification evidence (2026-11-07, Wi-Fi 2026-11-10, Bluetooth 2026-11-11)
 
 Reference device: Moto G9 Plus XT2087-2, S/N ZY227VHMSS, bootloader
 `MBM-3.0-odessa_retail-e69c40c38d6-220818`, `flashing_unlocked`, slot b active.
@@ -895,3 +895,67 @@ dmesg | grep "vdev-start-response reports status error"       # => BSSID peer pa
 
 `make check-rootfs` asserts the matching rootfs content (feature byte `0x0c`,
 modules, units, firmware, regdb, tools).
+
+## Bluetooth (WCN3990), 2026-11-11
+
+Verified on a freshly installed image (`flash-odessa.sh` -> `INSTALL_OK`),
+without any manual step after the reboot:
+
+```text
+$ systemctl --failed --no-legend | wc -l
+0
+
+$ hciconfig -a
+hci0:   Type: Primary  Bus: UART
+        BD Address: 08:AA:55:39:A2:9C  ACL MTU: 1024:7  SCO MTU: 60:8
+        UP RUNNING PSCAN ISCAN
+        RX bytes:1451 acl:0 sco:0 events:107 errors:0
+
+$ bluetoothctl show
+Controller 08:AA:55:39:A2:9C (public)
+        Manufacturer: 0x001d (29)
+        Version: 0x0a (10)
+        Name: odessa
+        Powered: yes
+
+$ dmesg | grep -E "setting up wcn399x|QCA "
+Bluetooth: hci0: setting up wcn399x
+Bluetooth: hci0: QCA controller version 0x01400201
+Bluetooth: hci0: QCA Downloading qca/crbtfw21.tlv
+Bluetooth: hci0: QCA Downloading qca/crnv21.bin
+Bluetooth: hci0: QCA setup on UART is completed
+
+$ bluetoothctl --timeout 15 scan on; bluetoothctl devices
+Device <PHONE-MAC> Zero              # Icon: phone, RSSI -61
+
+$ btmgmt pair -c 3 <PHONE-MAC>
+hci0 <PHONE-MAC> new_link_key type 0x07 store_hint 1
+Paired with <PHONE-MAC> (BR/EDR)
+```
+
+`bluetoothctl info <PHONE-MAC>` afterwards reports
+`Paired: yes | Bonded: yes | Connected: yes`.
+
+Three pieces beyond the mainline drivers are required and shipped here:
+
+- `qcom,geni-fifo` plus `kernel/patches/0007`: this vendor DTB exposes no QUP
+  DMA path (no `dmas`, no interconnect provider), and the first QUP DMA
+  transmit hard-locks the SoC. The driver then uses the FIFO primitives it
+  already uses for its console.
+- `local-bd-address` in the BT node plus `kernel/patches/0008`: the chip
+  reports no valid BD address, so `hci_dev_setup_sync()` would mark the
+  controller `HCI_UNCONFIGURED` and `hci_dev_open()` would fail with
+  `-EOPNOTSUPP` (mgmt/hcitool hide such a device, `hciconfig` shows `DOWN RAW`).
+  The serdev layer now sets `HCI_QUIRK_USE_BDADDR_PROPERTY`, so the address is
+  programmed by the driver's `set_bdaddr` during the setup.
+- `bt-stack`, `bt-addr` and `bt-agent` units: the combo chip only answers once
+  `pm6150l_l1/l2` are in their vendor windows (`wlan-rails`) and Wi-Fi
+  initialised the chip (`odessa-wlan`); `bt-agent` keeps a default
+  `NoInputNoOutput` agent registered, otherwise a phone pairing fails with
+  `0x05 (Authentication Failed)` / "PIN or Passkey wrong".
+
+Statistics after the pairing test: `RX bytes` in the hundreds of kB (firmware
+download), `acl:56/53` link-layer traffic with the phone.
+
+Limits: see `docs/KNOWN-LIMITATIONS.md` (BD address from the DTS, warm-reboot
+pulse behaviour, no SCO audio test).

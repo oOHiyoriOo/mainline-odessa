@@ -93,3 +93,20 @@ Frisch installiert aus `artifacts/rootfs-install.tar.gz` (122 MB gz / 374 MB):
 Hinweis: Der Motorola-Bootloader zählt Boots ohne „successful"-Markierung und
 fällt nach mehreren Reboots auf Slot a zurück; mit `fastboot --set-active=b`
 (oder erneutem Flashen von `boot_b`) geht es zurück auf mainline.
+
+## Nachtrag 2026-11-11: Bluetooth
+
+Bluetooth ist seit dem 2026-11-11 funktionsfähig und im Image enthalten
+(`README.md`, `docs/HARDWARE.md`, `docs/VERIFICATION.md`):
+
+- **WCN3990 über GENI SE3** im FIFO-Modus (`qcom,geni-fifo`,
+  `kernel/patches/0007`) — dieser Vendor-DTB hat keinen QUP-DMA-Pfad, der
+  erste DMA-Transmit hat die SoC hart blockiert.
+- **BD-Adresse aus dem DTS** (`local-bd-address`, `kernel/patches/0008`);
+  ohne sie markiert der Kernel den Controller als `HCI_UNCONFIGURED`
+  (`-EOPNOTSUPP`).
+- **BlueZ 5.85** (bluetoothd/bluetoothctl/btmgmt) plus `bt-stack`, `bt-addr`
+  und `bt-agent` Units; der Stack lädt nach `wlan-rails`/`odessa-wlan`, weil
+  der Combo-Chip erst dann antwortet.
+- Verifiziert: Scan, SSP-Pairing/Bond und aufrechte Verbindung zu einem
+  Telefon (`btmgmt pair -c 3 <MAC>`), 0 failed units nach frischer Installation.

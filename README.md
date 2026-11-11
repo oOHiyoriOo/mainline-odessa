@@ -2,7 +2,7 @@
 
 Mainline Linux 6.12 booted through U-Boot chainload, with a self-installing
 Ubuntu 26.04.1 rootfs and systemd 259. Validated end-to-end on a Moto G9 Plus
-XT2087-2 on 2026-11-07.
+XT2087-2 on 2026-11-07; Wi-Fi 2026-11-10, Bluetooth 2026-11-11.
 
 ```
 ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
@@ -23,8 +23,9 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Screen | boot console visible, then WLED backlight off (true off) |
 | Status LED | PM6150L TRILED (`qcom-spmi-lpg`), front LED on channel 1, `heartbeat` trigger |
 | Modem | `remoteproc0` = `4080000.qcom,mss` (`qcom,sm6150-mpss-pas`), runs stably (SMEM `mmi_unit_info` v3 via `wlan/modules/mmi_unit_info.c`), GLINK/IPCRTR up, QRTR works, `rmtfs` + `pd-mapper` active |
+| Bluetooth | WCN3990 over GENI SE3 (`qcom,geni-uart` + serdev), FIFO mode (this vendor DTB has no QUP DMA path): `hci0` up, scan, SSP pairing/bond (verified 2026-11-11 on a fresh install); firmware `qca/crbtfw21.tlv`+`crnv21.bin`, BD address from the DTS, BlueZ 5.85 in the image; `bt-stack`/`bt-addr`/`bt-agent` units, see `docs/HARDWARE.md` |
 | Wi-Fi | WCN3990 / `ath10k_snoc`: `wlan0` up, scan, WPA2-PSK association, DHCP (verified on a clean install 2026-11-10); needs `kernel/patches/0004-0006`, the firmware feature bit, the SMMU bypass, the modem userspace debs and the self-built `pd-mapper` — all shipped via `wlan/` (`docs/BUILD.md` §7) |
-| Containers | Docker Engine (static, `extras/docker/`): overlay2, containers run; bridge/NAT needs `iptables` (not in the payload) -> `--iptables=false --bridge=none` |
+| Containers | Docker Engine 28.5.1 (static, `extras/docker/`): overlay2, cgroup systemd, bridge/NAT via the bundled `iptables`/`libnftnl` debs and the CA bundle for registry TLS; `docker run alpine` verified on a clean install 2026-11-11 |
 | Boot | `systemctl is-system-running` = running, 0 failed units |
 
 Out of scope / blocked: camera, DSI panel, GPU, suspend/PM. Wi-Fi is
@@ -84,9 +85,11 @@ artifacts/           build inputs (small) + build outputs (git-ignored)
   Image-6.12.gz          kernel used in the FIT        \
   odessa-6.12-boot.img   ready-to-flash boot image      > build outputs,
   rootfs-install.tar.gz  rootfs payload                 /  see .gitignore
-kernel/              config, patches (0001..0006), DTS source, FIT template, build scripts
+kernel/              config, patches (0001..0008), DTS source, FIT template, build scripts
 wlan/                Wi-Fi (WCN3990): ath10k helper modules, systemd units,
                      firmware metadata + regdb, static iw/wpa_supplicant tools
+bt/                  Bluetooth (WCN3990): stack modules, firmware, bt-load/set-addr/agent
+                     scripts and the bt-stack/bt-addr/bt-agent units
 uboot/               board files, f_acm patch, build/pack scripts
 initramfs/           init script, build script, static aarch64 tools
 rootfs/              base tarball, systemd debs, install/sanitize/snapshot

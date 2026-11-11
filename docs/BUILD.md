@@ -113,9 +113,10 @@ The kernel build applies three ath10k fixes automatically
 The helper modules and firmware files are built/installed by:
 
 ```bash
-./kernel/build-kernel.sh          # Image.gz (patches 0001..0006)
+./kernel/build-kernel.sh          # Image.gz (patches 0001..0008)
 ./wlan/modules/build-modules.sh   # smmu_probe.ko, wlan_rails.ko, mmi_unit_info.ko
-make rootfs-tree                  # depends on wlan-modules
+./bt/modules/build-modules.sh     # Bluetooth stack modules (BT is not built in)
+make rootfs-tree                  # depends on wlan-modules and bt-modules
 sudo ./rootfs/prepare-rootfs.sh   # installs modules, units, firmware, tools
 ```
 

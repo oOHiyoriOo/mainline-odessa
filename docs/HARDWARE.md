@@ -28,12 +28,13 @@ ABL (stock)
   └─ loads boot_b: u-boot.bin as "kernel", FIT as "ramdisk", stock DTB in header
        └─ U-Boot (qcom_qcs615_odessa_defconfig)
             └─ bootm FIT
-                 ├─ kernel  Image.gz   @ 0x90000000
-                 ├─ DTB     odessa.dtb @ 0x8F000000
+                 ├─ kernel  Image.gz   @ 0x98000000 (image_size ~48 MiB)
+                 ├─ DTB     odessa.dtb @ 0x9F800000
                  └─ ramdisk initramfs @ 0xA0000000
                       └─ Linux 6.12
                            ├─ UFS 1d84000.ufshc -> /dev/sdb24
                            ├─ DWC3/QUSB2 -> CDC-NCM usb0 172.16.42.1/24
+                           ├─ GENI SE3 88c000 (serdev) -> WCN3990 Bluetooth
                            └─ self-install -> switch_root -> systemd
 ```
 

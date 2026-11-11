@@ -15,7 +15,7 @@ JOBS  ?= 12
 AUTHKEY ?= $(REPO)/config/authorized_keys.pub
 export AUTHKEY JOBS
 
-.PHONY: all check check-rootfs boot-check initramfs fit bootimg rootfs-tar rootfs-tree rootfs-img simg wlan-modules clean
+.PHONY: all check check-rootfs boot-check initramfs fit bootimg rootfs-tar rootfs-tree rootfs-img simg wlan-modules bt-modules clean
 
 all: bootimg rootfs-img simg
 
@@ -46,13 +46,17 @@ bootimg: fit
 rootfs-tar:
 	./rootfs/unpack-payload.sh
 
-rootfs-tree: wlan-modules
+rootfs-tree: wlan-modules bt-modules
 	./rootfs/unpack-payload.sh --extract
 
 # out-of-tree helper modules (SMMU bypass, WLAN rails, SMEM mmi_unit_info);
 # requires the kernel from kernel/build-kernel.sh
 wlan-modules:
 	./wlan/modules/build-modules.sh
+
+# Bluetooth stack modules (BT is a module set, see docs/HARDWARE.md)
+bt-modules:
+	./bt/modules/build-modules.sh
 
 rootfs-img: rootfs-tree
 	@command -v mke2fs >/dev/null || { echo "mke2fs missing (e2fsprogs)" >&2; exit 1; }
