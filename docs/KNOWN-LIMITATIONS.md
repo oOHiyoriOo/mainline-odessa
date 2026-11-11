@@ -70,8 +70,18 @@ Remaining limitations:
 - **No userspace stack.** BlueZ (`bluetoothd`, `bluetoothctl`) is not part of
   the image; the controller works at the HCI level only. Installing BlueZ
   needs package downloads from the network.
-- The BT MAC is whatever the controller reports; `androidboot.btmacaddr` from
-  the bootloader command line is not consumed by mainline.
+- The BT MAC comes from the device tree (`local-bd-address` in the
+  `qcom,wcn3990-bt` node): the WCN3990 reports no valid address, and userspace
+  programming through mgmt proved unreliable (the request can race the
+  boot-time setup and wedges the mgmt interface until the next reboot).
+  `bt-set-addr.sh` still reads `androidboot.btmacaddr` as a fallback, so a
+  unit with a different MAC needs either that property updated in the DTB or
+  the userspace path.
+- After a **warm** reboot the chip occasionally ignores the power-on pulse and
+  stays silent (no firmware download). The PM6150(L) rails are fixed
+  regulators here - mainline cannot enable the real RPMh regulators on this
+  vendor DTB - so only the pulse resets the chip; a cold power cycle always
+  works.
 - SCO/audio routing through the BTFM Slimbus codec was not exercised.
 
 ## Network
