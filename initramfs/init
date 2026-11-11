@@ -148,21 +148,35 @@ fi
 #   odessa.boot=ubuntu
 if grep -q 'odessa.boot=ubuntu' /proc/cmdline 2>/dev/null; then
     mkdir -p /mnt
+    # The UFS block device nodes appear asynchronously.  Without this wait the
+    # loop below runs before /dev/sdb24 exists, skips both candidates and the
+    # system stays in the initramfs ("no ready rootfs").
+    i=0
+    while [ "$i" -lt 10 ] && [ ! -b /dev/sdb24 ]; do
+        sleep 1
+        i=$((i + 1))
+    done
     # try userdata first (installer layout), then super (fastboot layout)
     ROOTDEV=""
     for cand in /dev/sdb24 /dev/sdb23; do
         [ -b "$cand" ] || continue
-        if mount -t ext4 -o ro "$cand" /mnt 2>/dev/null; then
-            # /sbin/init may be an absolute symlink (e.g. systemd: -> /lib/systemd/systemd);
-            # test -x would resolve that inside the initramfs and fail. Accept either a
-            # real executable, or the usual usrmerge/systemd targets inside the mount.
-            if [ -e /mnt/etc/odessa-ready ] && \
-               { [ -x /mnt/sbin/init ] || [ -x /mnt/lib/systemd/systemd ] || [ -x /mnt/usr/lib/systemd/systemd ]; }; then
-                ROOTDEV="$cand"
-                break
-            fi
-            umount /mnt
+        MOUNTED=0
+        i=0
+        while [ "$i" -lt 3 ]; do
+            if mount -t ext4 -o ro "$cand" /mnt 2>/dev/null; then MOUNTED=1; break; fi
+            sleep 1
+            i=$((i + 1))
+        done
+        [ "$MOUNTED" -eq 1 ] || continue
+        # /sbin/init may be an absolute symlink (e.g. systemd: -> /lib/systemd/systemd);
+        # test -x would resolve that inside the initramfs and fail. Accept either a
+        # real executable, or the usual usrmerge/systemd targets inside the mount.
+        if [ -e /mnt/etc/odessa-ready ] && \
+           { [ -x /mnt/sbin/init ] || [ -x /mnt/lib/systemd/systemd ] || [ -x /mnt/usr/lib/systemd/systemd ]; }; then
+            ROOTDEV="$cand"
+            break
         fi
+        umount /mnt
     done
     if [ -n "$ROOTDEV" ]; then
         say "switching root to $ROOTDEV (ubuntu)"

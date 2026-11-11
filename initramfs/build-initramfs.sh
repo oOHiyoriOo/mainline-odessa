@@ -15,7 +15,11 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 TOOLS=${TOOLS:-$REPO/initramfs/tools}
 AUTHKEY=${AUTHKEY:-$REPO/config/authorized_keys.pub}
 BUILD=${BUILD:-$REPO/build}
-PAYLOAD=${PAYLOAD:-$REPO/artifacts/rootfs-install.tar.gz}
+# The rootfs payload cannot ride inside the release boot image: it is ~124 MB
+# and boot_b is a 64 MiB partition, so the initramfs stays payload-less by
+# default and the rootfs is installed by flash-odessa.sh.  Set PAYLOAD=...
+# explicitly only for a target with a bigger boot partition.
+PAYLOAD=${PAYLOAD:-}
 
 BB="$TOOLS/busybox"
 DROPBEAR="$TOOLS/dropbear"
@@ -59,7 +63,7 @@ chmod 700 "$IR/root/.ssh" "$IR/etc/dropbear" "$IR/root"
 cp "$REPO/initramfs/init" "$IR/init"; chmod 755 "$IR/init"
 
 # optional self-install payload: the release boot image writes it to userdata
-if [ -f "$PAYLOAD" ]; then
+if [ -n "$PAYLOAD" ] && [ -f "$PAYLOAD" ]; then
     cp "$PAYLOAD" "$IR/rootfs.tar.gz"
     echo "payload: $(du -h "$PAYLOAD" | cut -f1)"
 fi

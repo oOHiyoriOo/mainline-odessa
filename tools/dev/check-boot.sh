@@ -45,5 +45,17 @@ run 'test -s /lib/firmware/modemr.jsn' && ok "modemr.jsn present" || bad "modemr
 echo "-- modem"
 printf '  state: %s\n' "$(run 'cat /sys/class/remoteproc/remoteproc0/state 2>/dev/null || echo n/a')"
 
+echo "-- bluetooth"
+[ "$(run 'systemctl is-active bt-stack.service 2>/dev/null')" = active ] &&
+	ok "bt-stack active" || bad "bt-stack not active"
+[ -n "$(run 'ls /sys/class/bluetooth/hci0 2>/dev/null')" ] &&
+	ok "hci0 present" || bad "no hci0"
+[ "$(run 'systemctl is-active bluetooth.service 2>/dev/null')" = active ] &&
+	ok "bluetoothd active" || bad "bluetoothd not active"
+ADDR=$(run 'bluetoothctl show 2>/dev/null | sed -n "s/^[[:space:]]*Controller \([0-9A-Fa-f:]\{17\}\).*/\1/p"')
+[ -n "$ADDR" ] && ok "controller $ADDR" || bad "bluetoothctl show found no controller"
+FW=$(run 'dmesg | grep -c "QCA setup on UART is completed"')
+[ "${FW:-0}" -ge 1 ] && ok "WCN3990 firmware download" || bad "WCN3990 setup not completed"
+
 echo
 if [ "$fail" -eq 0 ]; then echo "check-boot: PASS"; else echo "check-boot: $fail failure(s)"; exit 1; fi
