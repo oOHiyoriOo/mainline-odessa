@@ -273,7 +273,15 @@ if [ -f "$R/lib/firmware/ath10k/WCN3990/hw1.0/firmware-5.bin" ]; then
 	*)  bad "firmware features byte is 0x$byte, expected 0x0c" ;;
 	esac
 fi
-if grep -q 'ctrl_interface=/run/wpa_supplicant' "$R/etc/wpa_supplicant.conf" 2>/dev/null; then
+# an image with baked-in credentials keeps the file 0600 (wpa_supplicant
+# refuses a world-readable config), so it may not be readable here
+if [ ! -r "$R/etc/wpa_supplicant.conf" ]; then
+	if [ -s "$R/etc/wpa_supplicant.conf" ]; then
+		ok "wpa_supplicant.conf present (root-only)"
+	else
+		bad "wpa_supplicant.conf missing"
+	fi
+elif grep -q 'ctrl_interface=/run/wpa_supplicant' "$R/etc/wpa_supplicant.conf" 2>/dev/null; then
 	ok "wpa_supplicant.conf template"
 else
 	bad "wpa_supplicant.conf template missing"

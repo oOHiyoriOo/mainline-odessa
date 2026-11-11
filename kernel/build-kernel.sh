@@ -56,6 +56,11 @@ fi
 if ! grep -q "qcom,geni-fifo" "$SRC/drivers/tty/serial/qcom_geni_serial.c"; then
     ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0007-qcom-geni-uart-fifo-mode.patch" )
 fi
+# hci_uart/serdev: take the BD address from the DT (WCN3990 reports none),
+# see kernel/patches/0008-bluetooth-serdev-local-bd-address.patch
+if ! grep -q 'local-bd-address' "$SRC/drivers/bluetooth/hci_serdev.c"; then
+    ( cd "$SRC" && patch -p1 < "$REPO/kernel/patches/0008-bluetooth-serdev-local-bd-address.patch" )
+fi
 
 echo "== configure"
 cp -f "$REPO/kernel/config-6.12-odessa" "$SRC/.config"

@@ -8991,6 +8991,9 @@
 
 				bluetooth {
 					compatible = "qcom,wcn3990-bt";
+					/* the WCN3990 reports no valid address; the bootloader
+					 * passes 08:AA:55:39:A2:9C (androidboot.btmacaddr) */
+					local-bd-address = [9c a2 39 55 aa 08];
 					vddio-supply = <&vreg_bt_io>;
 					vddxo-supply = <&vreg_wlan_xo>;
 					vddrf-supply = <&vreg_wlan_rfa>;
