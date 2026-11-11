@@ -586,6 +586,34 @@ UNIT
         "$R/etc/systemd/system/multi-user.target.wants/docker.service"
 fi
 
+# --- BlueZ: userspace Bluetooth stack -------------------------------------
+# arm64 debs bundled in rootfs/debs (Ubuntu 26.04 main, sha256-pinned).  The
+# image has no udev, so the udev Depends of bluez is not satisfied; bluetoothd
+# does not need it (adapter naming is done through the kernel uapi here).
+for p in bluez libglib2.0-0t64 libffi8 libatomic1 libdw1t64 libasound2t64 \
+         libasound2-data libreadline8t64 readline-common kmod libkmod2; do
+    f=$(ls "$REPO"/rootfs/debs/${p}_*.deb 2>/dev/null | head -1 || true)
+    [ -n "$f" ] || { echo "missing rootfs/debs/${p}_*.deb" >&2; exit 1; }
+    dpkg-deb -x "$f" "$R"
+done
+# bluez' sysusers.d entry is only "g bluetooth"
+if ! grep -q '^bluetooth:' "$R/etc/group"; then
+    echo 'bluetooth:x:121:' >> "$R/etc/group"
+fi
+# bluetoothd is D-Bus activated; it must not start before the HCI controller
+# exists (bt-stack.service) or its ConditionPathIsDirectory fails.
+install -d "$R/etc/systemd/system/bluetooth.service.d" \
+    "$R/etc/systemd/system/multi-user.target.wants"
+cat > "$R/etc/systemd/system/bluetooth.service.d/10-odessa-bt-stack.conf" <<'BTEOF'
+[Unit]
+After=bt-stack.service
+Wants=bt-stack.service
+BTEOF
+ln -sfn /usr/lib/systemd/system/bluetooth.service \
+    "$R/etc/systemd/system/multi-user.target.wants/bluetooth.service"
+ln -sfn /usr/lib/systemd/system/bluetooth.service \
+    "$R/etc/systemd/system/dbus-org.bluez.service"
+
 # --- modem userspace (rmtfs, tqftpserv, qrtr) + pd-mapper ---------------
 # The base payload has no arm64 dpkg for these; extract the bundled debs
 # directly into the tree and enable their units.

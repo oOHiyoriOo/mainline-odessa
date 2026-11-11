@@ -192,6 +192,47 @@ if grep -q 'qcom,geni-fifo' "$REPO/kernel/dts/odessa-6.12-modem.dts" 2>/dev/null
 else
 	bad "qcom,geni-fifo missing from the BT UART node"
 fi
+
+# --- BlueZ (userspace stack, bundled debs) ---------------------------------
+check_file "$R/usr/libexec/bluetooth/bluetoothd" 1000
+check_file "$R/usr/bin/bluetoothctl" 1000
+check_file "$R/usr/bin/btmgmt" 1000
+check_file "$R/etc/bluetooth/main.conf" 100
+check_file "$R/usr/share/dbus-1/system.d/bluetooth.conf" 100
+check_file "$R/usr/lib/systemd/system/bluetooth.service" 100
+check_file "$R/etc/systemd/system/bluetooth.service.d/10-odessa-bt-stack.conf" 20
+if [ -L "$R/etc/systemd/system/multi-user.target.wants/bluetooth.service" ]; then
+	ok "bluetooth.service enabled"
+else
+	bad "bluetooth.service not enabled"
+fi
+if grep -q '^After=bt-stack.service' \
+	"$R/etc/systemd/system/bluetooth.service.d/10-odessa-bt-stack.conf" 2>/dev/null; then
+	ok "bluetoothd ordered after bt-stack"
+else
+	bad "bluetoothd is not ordered after bt-stack.service"
+fi
+if grep -q '^bluetooth:' "$R/etc/group"; then
+	ok "bluetooth group present"
+else
+	bad "bluetooth group missing"
+fi
+# every DT_NEEDED of the two shipped binaries must resolve inside the tree
+READELF=$(command -v aarch64-linux-gnu-readelf || true)
+if [ -n "$READELF" ]; then
+	missing_lib=0
+	for b in usr/libexec/bluetooth/bluetoothd usr/bin/bluetoothctl; do
+		for l in $("$READELF" -d "$R/$b" 2>/dev/null | \
+			sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
+			found=
+			for d in usr/lib/aarch64-linux-gnu lib/aarch64-linux-gnu usr/lib lib; do
+				[ -e "$R/$d/$l" ] && found=1 && break
+			done
+			[ -n "$found" ] || { bad "missing lib $l for $b"; missing_lib=1; }
+		done
+	done
+	[ "$missing_lib" = 0 ] && ok "bluez shared libraries resolve"
+fi
 for t in iw wpa_supplicant wpa_cli; do
 	check_file "$R/opt/re-tools/$t" 100000
 done
