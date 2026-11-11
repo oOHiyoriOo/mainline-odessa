@@ -50,7 +50,7 @@ wait_ssh || { echo "device did not come up at $DEV" >&2; exit 1; }
 # and reboot into the initramfs.
 if $SSH root@"$DEV" "grep -q \" / \" /proc/mounts && grep -q '/dev/sdb24 / ' /proc/mounts" 2>/dev/null; then
     echo "== target booted the installed rootfs; rebooting into the prep initramfs"
-    $SSH root@"$DEV" "rm -f /etc/odessa-ready; sync; reboot" || true
+    $SSH root@"$DEV" "rm -f /etc/odessa-ready; sync; reboot -f" || true
     sleep 20
     wait_ssh || { echo "device did not return to the initramfs" >&2; exit 1; }
 fi
@@ -59,5 +59,7 @@ echo "== install rootfs (wipes userdata)"
 KEY="$KEY" DEV="$DEV" "$REPO/rootfs/install-to-device.sh" "$ROOTFS" --yes
 
 echo "== reboot into the installed system"
-$SSH root@"$DEV" "sync; reboot" || true
+# busybox reboot waits for a real init to handle the signal; with init=/init
+# in the initramfs it is a no-op, so force it.
+$SSH root@"$DEV" "sync; reboot -f" || true
 echo "Done. After ~60 s: ssh -i $KEY root@$DEV"

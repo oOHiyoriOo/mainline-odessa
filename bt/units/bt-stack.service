@@ -4,7 +4,6 @@ Documentation=file:/workspace/odessa-linux-6.12/docs/HARDWARE.md
 After=wlan-rails.service
 Requires=wlan-rails.service
 Before=bluetooth.target
-ConditionPathExists=/sys/class/bluetooth
 
 [Service]
 Type=oneshot

@@ -57,5 +57,14 @@ ADDR=$(run 'bluetoothctl show 2>/dev/null | sed -n "s/^[[:space:]]*Controller \(
 FW=$(run 'dmesg | grep -c "QCA setup on UART is completed"')
 [ "${FW:-0}" -ge 1 ] && ok "WCN3990 firmware download" || bad "WCN3990 setup not completed"
 
+echo "-- leds (heartbeat)"
+TRIG=$(run 'cat /sys/class/leds/charging/trigger 2>/dev/null')
+case "$TRIG" in
+*"[heartbeat]"*) ok "heartbeat trigger active" ;;
+*) bad "heartbeat trigger not active (${TRIG:-missing})" ;;
+esac
+MAXB=$(run 'cat /sys/class/leds/charging/max_brightness 2>/dev/null')
+[ -n "$MAXB" ] && ok "charging LED present (max_brightness=$MAXB)" || bad "charging LED missing"
+
 echo
 if [ "$fail" -eq 0 ]; then echo "check-boot: PASS"; else echo "check-boot: $fail failure(s)"; exit 1; fi

@@ -614,6 +614,36 @@ ln -sfn /usr/lib/systemd/system/bluetooth.service \
 ln -sfn /usr/lib/systemd/system/bluetooth.service \
     "$R/etc/systemd/system/dbus-org.bluez.service"
 
+# --- TLS trust + system users the base payload never got -------------------
+# The sanitized snapshot has no /etc/ssl/certs bundle and no sysusers-created
+# accounts, so apt/docker fail with "certificate signed by unknown authority"
+# and systemd-timesyncd dies with "Unknown user" (status 217/USER).
+for p in ca-certificates openssl; do
+    f=$(ls "$REPO"/rootfs/debs/${p}_*.deb 2>/dev/null | head -1 || true)
+    [ -n "$f" ] || { echo "missing rootfs/debs/${p}_*.deb" >&2; exit 1; }
+    dpkg-deb -x "$f" "$R"
+done
+if [ -d "$R/usr/share/ca-certificates" ]; then
+    install -d -m 755 "$R/etc/ssl/certs"
+    cat "$R"/usr/share/ca-certificates/*/*.crt > "$R/etc/ssl/certs/ca-certificates.crt"
+    chmod 644 "$R/etc/ssl/certs/ca-certificates.crt"
+    # OpenSSL looks certificates up by subject hash; regenerate the links the
+    # postinst would have created (the files are PEM, so the host openssl works)
+    rm -f "$R"/etc/ssl/certs/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].[0-9]
+    for c in "$R"/usr/share/ca-certificates/*/*.crt; do
+        h=$(openssl x509 -hash -noout -in "$c" 2>/dev/null) || continue
+        cp -f "$c" "$R/etc/ssl/certs/$h.0" 2>/dev/null || true
+    done
+fi
+# systemd-timesync: the timesyncd unit runs as this user (sysusers.d entry)
+if ! grep -q '^systemd-timesync:' "$R/etc/passwd"; then
+    echo 'systemd-timesync:x:996:996:systemd Time Synchronization:/:/usr/sbin/nologin' \
+        >> "$R/etc/passwd"
+fi
+if ! grep -q '^systemd-timesync:' "$R/etc/group"; then
+    echo 'systemd-timesync:x:996:' >> "$R/etc/group"
+fi
+
 # --- modem userspace (rmtfs, tqftpserv, qrtr) + pd-mapper ---------------
 # The base payload has no arm64 dpkg for these; extract the bundled debs
 # directly into the tree and enable their units.

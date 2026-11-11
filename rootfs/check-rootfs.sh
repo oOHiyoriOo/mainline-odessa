@@ -217,6 +217,15 @@ if grep -q '^bluetooth:' "$R/etc/group"; then
 else
 	bad "bluetooth group missing"
 fi
+# TLS trust + the account systemd-timesyncd runs as (both were missing in the
+# sanitized payload and broke apt/docker and NTP out of the box)
+check_file "$R/etc/ssl/certs/ca-certificates.crt" 100000
+check_file "$R/usr/bin/openssl" 100000
+if grep -q '^systemd-timesync:' "$R/etc/passwd"; then
+	ok "systemd-timesync user present"
+else
+	bad "systemd-timesync user missing (timesyncd fails with status 217/USER)"
+fi
 # every DT_NEEDED of the two shipped binaries must resolve inside the tree
 READELF=$(command -v aarch64-linux-gnu-readelf || true)
 if [ -n "$READELF" ]; then
