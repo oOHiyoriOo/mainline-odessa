@@ -1,8 +1,9 @@
 [Unit]
 Description=Odessa Bluetooth stack (WCN3990 over GENI UART)
 Documentation=file:/workspace/odessa-linux-6.12/docs/HARDWARE.md
-After=wlan-rails.service
+After=wlan-rails.service odessa-wlan.service
 Requires=wlan-rails.service
+Wants=odessa-wlan.service
 Before=bluetooth.target
 
 [Service]

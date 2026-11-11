@@ -212,6 +212,12 @@ if grep -q '^After=bt-stack.service' \
 else
 	bad "bluetoothd is not ordered after bt-stack.service"
 fi
+# the WCN3990 is a combo chip: BT only answers once WLAN (icnss) initialised it
+if grep -q '^After=.*odessa-wlan.service' "$R/etc/systemd/system/bt-stack.service" 2>/dev/null; then
+	ok "bt-stack ordered after odessa-wlan"
+else
+	bad "bt-stack is not ordered after odessa-wlan.service"
+fi
 if grep -q '^bluetooth:' "$R/etc/group"; then
 	ok "bluetooth group present"
 else
