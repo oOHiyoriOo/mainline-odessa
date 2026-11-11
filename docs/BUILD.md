@@ -159,7 +159,10 @@ iw dev wlan0 link
 ```
 
 `make check-rootfs` verifies modules, units, firmware (including the `0x0c`
-feature byte), regdb and tools.
+feature byte), regdb and tools. It also runs
+`rootfs/test-battery-guard.sh`, the offline state-machine test for the charge
+guard (fake sysfs, fixed timestamps), and compares the installed guard with
+`rootfs/battery-guard.sh`.
 
 ### Modem userspace and pd-mapper
 

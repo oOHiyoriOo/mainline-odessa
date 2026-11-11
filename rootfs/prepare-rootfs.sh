@@ -150,45 +150,14 @@ TimeoutStartSec=40
 WantedBy=sysinit.target
 EOF
 
-# --- battery charge guard (hysteresis 55/60) -------------------------------
-cat > "$R/usr/local/sbin/battery-guard.sh" <<'EOF'
-#!/bin/sh
-# Keep the battery between 40% and 60% while on USB power.
-#
-# Capacity comes from the QG SDAM block (offset 0x47) via mainline nvmem;
-# the fallback is the ADC5 vbat_sns channel. Charging is controlled by the
-# odessa-chg driver (PM6150 CHARGING_ENABLE_CMD, 0x1042 bit 0).
-CHG=$(find /sys/devices -name charge_enable 2>/dev/null | head -1)
-[ -w "$CHG" ] || exit 0
-N=/sys/bus/nvmem/devices/spmi_sdam0/nvmem
-V=/sys/bus/iio/devices/iio:device0/in_voltage_vbat_sns_input
-cap=""
-[ -r "$N" ] && cap=$(dd if="$N" bs=1 skip=71 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
-v=""
-[ -r "$V" ] && v=$(cat "$V" 2>/dev/null)
-if [ -n "$cap" ] && [ "$cap" -ge 0 ] && [ "$cap" -le 100 ]; then
-    # stale QG value: 100% but the cell is clearly below full
-    if [ "$cap" -eq 100 ] && [ -n "$v" ] && [ "$v" -lt 3900000 ]; then
-        cap=""
-    fi
-fi
-old=$(cat "$CHG" 2>/dev/null)
-if [ -n "$cap" ]; then
-    if [ "$cap" -ge 60 ]; then echo 0 > "$CHG"; fi
-    if [ "$cap" -le 40 ]; then echo 1 > "$CHG"; fi
-elif [ -n "$v" ]; then
-    if [ "$v" -ge 4000000 ]; then echo 0 > "$CHG"; fi
-    if [ "$v" -le 3650000 ]; then echo 1 > "$CHG"; fi
-fi
-new=$(cat "$CHG" 2>/dev/null)
-[ "$old" != "$new" ] && echo "battery-guard: cap=${cap:-?} v=${v:-?} charge=$new" > /dev/kmsg
-exit 0
-EOF
-chmod 755 "$R/usr/local/sbin/battery-guard.sh"
+# --- battery charge guard (40-60, voltage/OCV based) ------------------------
+# Source of truth is rootfs/battery-guard.sh (checked by
+# rootfs/test-battery-guard.sh and rootfs/check-rootfs.sh).
+install -m 755 "$REPO/rootfs/battery-guard.sh" "$R/usr/local/sbin/battery-guard.sh"
 
 cat > "$R/etc/systemd/system/battery-guard.service" <<'EOF'
 [Unit]
-Description=Battery charge guard (55-60%)
+Description=Battery charge guard (40-60%)
 
 [Service]
 Type=oneshot
@@ -537,7 +506,7 @@ fi
 /usr/local/sbin/dropbear -p 22 -r /etc/dropbear/dropbear_ed25519_host_key \
     && echo "[init] dropbear on :22" > /dev/kmsg
 
-# --- battery charge guard (55/60 hysteresis) ------------------------------
+# --- battery charge guard (40/60, pulsed charge) --------------------------
 (
   while :; do
     /usr/local/sbin/battery-guard.sh

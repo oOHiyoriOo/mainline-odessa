@@ -68,11 +68,21 @@ default route), so dual-stack clients fall back to IPv4.
 
 ## Battery guard
 
-`battery-guard.timer` keeps the pack between 40% and 60%: it stops charging at
->=60% and resumes at <=40% via the PM6150 `CHARGING_ENABLE_CMD` bit. Capacity
-comes from the QG SDAM (offset 0x47) through nvmem, with an ADC5
-`vbat_sns` fallback (4.00 V / 3.65 V). In idle the device runs from the cable
-without loading the battery, so it stays at the current SoC.
+`battery-guard.timer` keeps the pack between 40% and 60%. The mainline kernel
+does not run the QG fuel gauge, so `/sys/class/power_supply` is empty and the
+SDAM msoc byte (offset 0x47) is a frozen bootloader anchor (normally 100%).
+The guard therefore estimates the SoC from the relaxed `vbat_sns` voltage with
+the vendor OCV table of the installed cell (kz40-atl-3600mah,
+`qcom,pc-temp-v1-lut`, 25 C column) and only uses the gauge byte when it
+agrees with that estimate within 8 points.
+
+While charging the terminal voltage is dominated by IR drop and polarization,
+so charging runs in pulses: at most 240 s on, then 180 s off, and the 60% stop
+decision is taken on the relaxed voltage at the end of the rest. Charging
+resumes once the relaxed voltage drops to <=40%. There is no current/power
+telemetry, so the percentage stays an estimate (a few points low under load)
+and could read high on a cell whose OCV curve differs from the shipped
+profile.
 
 ## Clock
 

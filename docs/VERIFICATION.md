@@ -481,8 +481,33 @@ charge_enable=1 / status 0x1006     4 (TAPER_CHARGE)
 battery-guard.timer                 active, 30 s period
 ```
 
-The guard stops at >=60% and resumes at <=40%; the voltage fallback uses
-4.00 V / 3.65 V if the QG value is stale.
+The guard stops at >=60% and resumes at <=40%. Since the mainline kernel runs
+no QG fuel gauge, the SDAM value above is a frozen bootloader anchor and not a
+live SoC; see "Battery guard rebuilt on the OCV curve (2026-11-11)" below.
+
+### Battery guard rebuilt on the OCV curve (2026-11-11)
+
+The SDAM msoc byte only changes while the vendor QG driver runs, so on
+mainline it stays at 100% for the whole uptime. The old guard disabled
+charging at boot (`cap=100 >= 60`) and re-enabled it only when the fallback
+triggered at <=3.65 V, so the pack silently drained and cycled far below the
+intended band.
+
+`rootfs/battery-guard.sh` now estimates the SoC from the relaxed `vbat_sns`
+voltage with the vendor OCV table of the installed cell (kz40-atl-3600mah,
+`qcom,pc-temp-v1-lut`, 25 C column, `kernel/dts/abl-merged-gcc.dts`) and only
+trusts the gauge byte when it agrees within 8 points. While charging the
+terminal voltage is dominated by IR drop, so charging runs in pulses
+(240 s on, 180 s off); the 60% stop decision is made on the relaxed voltage at
+the end of the rest, and charging resumes at <=40%. The state machine lives in
+`/run/battery-guard.state` (`/tmp` when the busybox init runs without /run).
+
+```
+4.023 V -> 67 %   3.900 V -> 55 %   3.830 V -> 41 %   3.800 V -> 29 %
+rootfs/test-battery-guard.sh        PASS (fake sysfs, fixed NOW values)
+check-rootfs.sh                     runs that test and compares the installed
+                                    guard with rootfs/battery-guard.sh
+```
 
 ### Charge control restored (2026-11-08)
 

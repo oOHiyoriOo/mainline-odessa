@@ -97,6 +97,23 @@ else
 	bad "$R/lib/firmware/modemuw.jsn missing"
 fi
 
+echo "-- battery guard"
+check_exec "$R/usr/local/sbin/battery-guard.sh"
+if cmp -s "$REPO/rootfs/battery-guard.sh" "$R/usr/local/sbin/battery-guard.sh"; then
+	ok "guard matches rootfs/battery-guard.sh"
+else
+	bad "guard differs from rootfs/battery-guard.sh (re-run prepare-rootfs.sh)"
+fi
+for pat in 'SOC_LOW=40' 'SOC_HIGH=60' 'CHARGE_ON_MAX' 'CHARGE_REST' '4384000'; do
+	grep -q "$pat" "$R/usr/local/sbin/battery-guard.sh" 2>/dev/null &&
+		ok "guard carries $pat" || bad "guard lacks $pat"
+done
+if "$REPO/rootfs/test-battery-guard.sh" >/dev/null 2>&1; then
+	ok "rootfs/test-battery-guard.sh"
+else
+	bad "rootfs/test-battery-guard.sh failed"
+fi
+
 echo "-- boot readiness"
 # /etc/odessa-ready is written by rootfs/install-to-device.sh on the device,
 # not by prepare-rootfs.sh; check the installer still does it.
