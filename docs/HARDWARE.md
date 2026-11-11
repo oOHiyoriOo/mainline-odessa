@@ -111,6 +111,17 @@ Bluetooth: hci0: QCA setup on UART is completed
 Rebuild the shipped modules with `bt/modules/build-modules.sh`; the rootfs
 installer copies them to `/lib/modules/6.12.0/extra/`.
 
+Notes for using the controller:
+
+- The BD address comes from the device tree (`local-bd-address`), because the
+  chip reports none and a userspace `mgmt` request can race the boot-time setup
+  and wedge the interface.
+- Pair with `btmgmt pair -c 3 <MAC>` (IO capability `NoInputNoOutput`): the
+  controllers here have no keyboard/display, and the phone then uses Just Works
+  instead of a passkey nobody can confirm. `bluetoothctl` works interactively
+  (`agent on`, `default-agent`) but a piped session cannot answer the
+  confirmation prompt.
+
 ## USB
 
 DWC3 at `a600000.dwc3` with the QUSB2 PHY. The gadget is configured from

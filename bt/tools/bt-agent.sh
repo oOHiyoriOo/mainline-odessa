@@ -1,11 +1,17 @@
 #!/bin/sh
-# Keep a Just-Works pairing agent registered.
+# Keep a Just-Works pairing agent registered *and default*.
 #
-# The image is headless: without an agent bluetoothd cannot answer an incoming
-# SSP request, and pairing from a phone fails with 0x05 (Authentication
-# Failed) / "PIN or Passkey wrong".  bluetoothctl must stay alive for the
-# agent to remain registered, so feed it a long-lived stdin.
+# The image is headless: without a default NoInputNoOutput agent bluetoothd
+# falls back to an agent that asks for passkey confirmation, which nobody can
+# answer, and pairing fails with 0x05 (Authentication Failed) - the phone shows
+# "PIN or Passkey wrong".  bluetoothctl must stay alive for the registration to
+# hold, so feed it a long-lived stdin.
 while true; do
-    sleep 86400 | /usr/bin/bluetoothctl --agent NoInputNoOutput >/dev/null 2>&1
+    {
+        echo "agent NoInputNoOutput"
+        sleep 1
+        echo "default-agent"
+        sleep 86400
+    } | /usr/bin/bluetoothctl --agent NoInputNoOutput >/dev/null 2>&1
     sleep 5
 done
