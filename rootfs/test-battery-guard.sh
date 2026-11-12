@@ -26,6 +26,8 @@ set_qg() { # percent
 }
 set_v() { echo "$1" > "$T/iio/in_voltage_vbat_sns_input"; }
 no_v()  { rm -f "$T/iio/in_voltage_vbat_sns_input"; }
+set_t() { echo "$1" > "$T/iio/in_temp_bat_therm_input"; }
+no_t()  { rm -f "$T/iio/in_temp_bat_therm_input"; }
 set_chg() { echo "$1" > "$T/chg/charge_enable"; }
 set_id() { printf '%s\000' "$1" > "$T/battid"; }
 set_id SB18C80753
@@ -136,6 +138,50 @@ guard 2600
 expect "missing id leaves the charger alone" 0
 
 echo
+# reported values are what mainline adc5 prints for the given real
+# temperature (100k NTC table applied to the pack's own NTC)
+echo "-- temperature window (5..40 C)"
+rm -f "$T/state" "$T/state.unknown"
+set_id SB18C80753
+set_qg 0
+set_chg 0
+set_v 3820000
+set_t 81643
+guard 3000
+expect "10k NTC at 25 C (reported 81.6 C) charges" 1
+set_t 99156
+guard 3010
+expect "41 C stops a running charge" 0
+grep -q '^resting ' "$T/state" && ok "hot stop rests" || bad "hot stop does not rest"
+guard 3190
+expect "still 41 C after rest stays off" 0
+guard 3200
+expect "41 C idle at ~34% does not start" 0
+set_t 58089
+guard 3210
+expect "4 C idle does not start" 0
+set_t 103360
+set_v 3300000
+guard 3220
+expect "hard floor charges even at 45 C" 1
+rm -f "$T/state"
+set_chg 0
+set_v 3820000
+set_id SB18C86661
+set_t 37931
+guard 3300
+expect "100k NTC at 41 C (reported 37.9 C) does not start" 0
+set_t 24977
+guard 3310
+expect "100k NTC at 25 C charges" 1
+rm -f "$T/state"
+set_chg 0
+set_id SB18C80753
+set_t garbage
+guard 3400
+expect "unreadable temperature skips the check" 1
+no_t
+
 if [ "$fail" -eq 0 ]; then
 	echo "battery-guard tests: PASS"
 	exit 0
