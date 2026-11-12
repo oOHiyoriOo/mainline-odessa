@@ -111,6 +111,13 @@ column) and only uses the gauge byte when it agrees with that estimate within
 `/chosen/mmi,battid`: MG50 5000 mAh (SB18C80753, SB18C86661) or KZ40
 3600 mAh (SB18C41148, SB18C41504). With any other ID the guard does nothing.
 
+Charging (except the 3.45 V hard floor) only runs while the pack is between
+5 C and 40 C. Mainline adc5 converts `bat_therm` with the 100k NTC table, but
+MG50-ATL and KZ40 packs carry a 10k NTC (a 25 C pack reads as ~82 C). The
+guard maps the value back to the divider voltage and recomputes the
+temperature with the pack's NTC (`qcom,battery-therm-kohm`,
+`qcom,battery-beta`). Not yet checked against a reference thermometer.
+
 While charging the terminal voltage is dominated by IR drop and polarization,
 so charging runs in pulses: at most 240 s on, then 180 s off, and the 50% stop
 decision is taken on the relaxed voltage at the end of the rest. Charging

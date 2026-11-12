@@ -25,12 +25,23 @@
 # at the end of the rest; this keeps the pack in the band without a current
 # sensor.
 #
+# Charging only runs while the pack is between TEMP_MIN and TEMP_MAX C; the
+# hard voltage floor still charges, a deep discharge is worse.  The mainline
+# adc5 driver converts bat_therm (0x4a, 100k pull-up) with the 100k NTC table
+# (adcmap_100k_104ef_104fb_1875_vref), but MG50-ATL and KZ40 packs carry a 10k
+# NTC.  The guard maps the reported value back to the divider voltage through
+# that table and recomputes the temperature with the pack's own NTC
+# (qcom,battery-therm-kohm / qcom,battery-beta).  An unreadable value
+# disables the temperature check.
+#
 # SDAM/IIO/CHG/STATE/NOW/BATTID can be overridden; rootfs/test-battery-guard.sh does
 # that against a fake sysfs.
 SOC_LOW=40
 SOC_HIGH=50
 CHARGE_ON_MAX=240
 CHARGE_REST=180
+TEMP_MIN=5
+TEMP_MAX=40
 
 SDAM=${SDAM:-/sys/bus/nvmem/devices/spmi_sdam0/nvmem}
 IIO=${IIO:-/sys/bus/iio/devices/iio:device0}
@@ -52,8 +63,9 @@ log() { [ -w /dev/kmsg ] && echo "battery-guard: $*" > /dev/kmsg; }
 
 id=$(tr -d '\000' 2>/dev/null < "$BATTID")
 case "$id" in
-SB18C80753|SB18C86661) pack=mg50 ;;
-SB18C41148|SB18C41504) pack=kz40 ;;
+SB18C80753) pack=mg50 ntc_k=10 ntc_b=3440 ;;
+SB18C86661) pack=mg50 ntc_k=100 ntc_b=3440 ;;
+SB18C41148|SB18C41504) pack=kz40 ntc_k=10 ntc_b=3380 ;;
 *)
 	# log once per boot, the timer runs every minute
 	[ -e "$STATE.unknown" ] ||
@@ -203,6 +215,28 @@ disable() {
 v=$(cat "$IIO/in_voltage_vbat_sns_input" 2>/dev/null)
 case "$v" in *[!0-9]*|"") v="";; esac
 
+# --- pack temperature (C) from bat_therm, see header ------------------------
+t=$(cat "$IIO/in_temp_bat_therm_input" 2>/dev/null)
+case "${t#-}" in *[!0-9]*|"") t="";; esac
+if [ -n "$t" ]; then
+	t=$(awk -v m="$t" -v k="$ntc_k" -v b="$ntc_b" '
+	BEGIN {
+		n = split("1831 1814 1791 1761 1723 1675 1616 1545 1463 1370 1268 " \
+			"1160 1049 937 828 726 630 544 467 399 340 290 247 209 179 " \
+			"153 130 112 96 82 71 62 53 46", mv, " ")
+		# table steps are 5 C from -40 C; the ends are clamped, so reject them
+		if (m <= -40000 || m >= 125000) exit
+		i = int((m + 40000) / 5000) + 1
+		u = mv[i] + (mv[i + 1] - mv[i]) * (m + 40000 - (i - 1) * 5000) / 5000
+		r = 100 * u / (1875 - u)
+		printf "%d\n", 1 / (1 / 298.15 + log(r / k) / b) - 273.15
+	}')
+fi
+hot=""
+if [ -n "$t" ] && { [ "$t" -lt "$TEMP_MIN" ] || [ "$t" -ge "$TEMP_MAX" ]; }; then
+	hot=1
+fi
+
 # --- SoC from the OCV table (relaxed cell voltage) -------------------------
 soc=""
 if [ -n "$v" ]; then
@@ -262,6 +296,7 @@ action=""
 case "$phase" in
 charging)
 	[ $((NOW - ts)) -ge "$CHARGE_ON_MAX" ] && action=stop
+	[ -n "$hot" ] && action=stop
 	;;
 resting)
 	[ $((NOW - ts)) -ge "$CHARGE_REST" ] && action=decide_rest
@@ -275,11 +310,14 @@ case "$action" in
 stop)
 	echo 0 > "$CHG"
 	printf "resting %s\n" "$NOW" > "$STATE"
-	log "stop after ${CHARGE_ON_MAX}s, soc=${use:-?} v=${v:-?} qg=${qg:-?}"
+	log "stop after $((NOW - ts))s, soc=${use:-?} v=${v:-?} qg=${qg:-?} t=${t:-?}"
 	;;
 decide_rest)
 	if [ -z "$use" ]; then
 		disable
+	elif [ -n "$hot" ]; then
+		disable
+		log "pack at ${t} C (outside ${TEMP_MIN}..${TEMP_MAX} C), charging off"
 	elif [ "$use" -ge "$SOC_HIGH" ]; then
 		disable
 		log "reached ${use}% (>= ${SOC_HIGH}%), charging off"
@@ -292,7 +330,7 @@ decide_idle)
 	if [ -n "$v" ] && [ "$v" -lt 3450000 ]; then
 		enable
 		log "hard floor v=${v}, charging on"
-	elif [ -n "$use" ] && [ "$use" -le "$SOC_LOW" ]; then
+	elif [ -z "$hot" ] && [ -n "$use" ] && [ "$use" -le "$SOC_LOW" ]; then
 		enable
 		log "low ${use}% (<= ${SOC_LOW}%), charging on"
 	fi
