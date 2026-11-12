@@ -104,7 +104,7 @@ if cmp -s "$REPO/rootfs/battery-guard.sh" "$R/usr/local/sbin/battery-guard.sh"; 
 else
 	bad "guard differs from rootfs/battery-guard.sh (re-run prepare-rootfs.sh)"
 fi
-for pat in 'SOC_LOW=40' 'SOC_HIGH=60' 'CHARGE_ON_MAX' 'CHARGE_REST' '4384000'; do
+for pat in 'SOC_LOW=40' 'SOC_HIGH=50' 'CHARGE_ON_MAX' 'CHARGE_REST' '4433200'; do
 	grep -q "$pat" "$R/usr/local/sbin/battery-guard.sh" 2>/dev/null &&
 		ok "guard carries $pat" || bad "guard lacks $pat"
 done

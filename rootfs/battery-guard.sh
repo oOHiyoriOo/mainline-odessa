@@ -9,10 +9,15 @@
 # carries the peak load and slowly drains even on USB.
 #
 # SoC is estimated from the relaxed battery voltage with the vendor OCV table
-# of the installed cell (mg50-atl-5000mah, qcom,pc-temp-v1-lut, 25 C column,
-# see kernel/dts/abl-merged-gcc.dts; the mg50-scud curve differs by <1 %
-# SoC inside the 40..60 % band).  The gauge byte is only used when it
-# agrees with that estimate, which is what a working QG would do.
+# of the installed cell (qcom,pc-temp-v1-lut, 25 C column, see
+# kernel/dts/abl-merged-gcc.dts).  ABL reads the pack serial number into
+# /chosen/mmi,battid; it selects the table:
+#   SB18C80753 mg50-atl-5000mah   SB18C86661 mg50-scud-5000mah
+#   SB18C41148 kz40-atl-3600mah   SB18C41504 kz40-swd-3600mah
+# ATL and SCUD/SWD curves of the same pack differ by <1 % SoC in the band, so
+# one table per pack is used.  An unknown or missing ID leaves the charger
+# alone.  The gauge byte is only used when it agrees with the OCV estimate,
+# which is what a working QG would do.
 #
 # While charging the terminal voltage is dominated by IR drop and
 # polarization, so charging runs in bounded pulses: CHARGE_ON_MAX seconds on,
@@ -20,10 +25,10 @@
 # at the end of the rest; this keeps the pack in the band without a current
 # sensor.
 #
-# SDAM/IIO/CHG/STATE/NOW can be overridden; rootfs/test-battery-guard.sh does
+# SDAM/IIO/CHG/STATE/NOW/BATTID can be overridden; rootfs/test-battery-guard.sh does
 # that against a fake sysfs.
 SOC_LOW=40
-SOC_HIGH=60
+SOC_HIGH=50
 CHARGE_ON_MAX=240
 CHARGE_REST=180
 
@@ -39,41 +44,28 @@ if [ -z "${STATE:-}" ]; then
 fi
 mkdir -p "$(dirname "$STATE")" 2>/dev/null || true
 NOW=${NOW:-$(date +%s)}
+BATTID=${BATTID:-/proc/device-tree/chosen/mmi,battid}
 
 [ -w "${CHG:-/nonexistent}" ] || exit 0
 
 log() { [ -w /dev/kmsg ] && echo "battery-guard: $*" > /dev/kmsg; }
 
-byte() {
-	dd if="$SDAM" bs=1 skip="$1" count=1 2>/dev/null | od -An -tu1 | tr -d " \n"
-}
+id=$(tr -d '\000' 2>/dev/null < "$BATTID")
+case "$id" in
+SB18C80753|SB18C86661) pack=mg50 ;;
+SB18C41148|SB18C41504) pack=kz40 ;;
+*)
+	# log once per boot, the timer runs every minute
+	[ -e "$STATE.unknown" ] ||
+		log "unknown battery id '${id:-none}', charger left alone"
+	: > "$STATE.unknown"
+	exit 0
+	;;
+esac
 
-enable() {
-	echo 1 > "$CHG"
-	printf "charging %s\n" "$NOW" > "$STATE"
-}
-
-disable() {
-	echo 0 > "$CHG"
-	printf "idle %s\n" "$NOW" > "$STATE"
-}
-
-v=$(cat "$IIO/in_voltage_vbat_sns_input" 2>/dev/null)
-case "$v" in *[!0-9]*|"") v="";; esac
-
-# --- SoC from the OCV table (relaxed cell voltage) -------------------------
-soc=""
-if [ -n "$v" ]; then
-	prev_s=""
-	prev_v=""
-	while read -r s u; do
-		if [ -n "$prev_s" ] && [ "$v" -le "$prev_v" ] && [ "$v" -ge "$u" ]; then
-			soc=$((prev_s - (prev_s - s) * (prev_v - v) / (prev_v - u)))
-			break
-		fi
-		prev_s=$s
-		prev_v=$u
-	done <<OCV
+ocv() {
+	case "$pack" in
+	mg50) cat <<OCV
 100 4433200
 98 4411600
 96 4392000
@@ -131,13 +123,108 @@ if [ -n "$v" ]; then
 1 3324800
 0 3000000
 OCV
-	if [ -z "$soc" ] && [ -n "$prev_v" ]; then
-		if [ "$v" -gt "$prev_v" ]; then
-			soc=100
-		elif [ "$v" -lt 3000000 ]; then
-			soc=0
+		;;
+	kz40) cat <<OCV
+100 4384000
+98 4366500
+96 4343500
+94 4320400
+92 4296900
+90 4273100
+88 4249700
+86 4226400
+84 4203400
+82 4180600
+80 4158100
+78 4136400
+76 4115000
+74 4094300
+72 4074100
+70 4054200
+68 4033600
+66 4013400
+64 3996000
+62 3982200
+60 3966400
+58 3940800
+56 3911100
+54 3892400
+52 3880600
+50 3870600
+48 3861200
+46 3852600
+44 3844400
+42 3836600
+40 3829400
+38 3822700
+36 3816700
+34 3811500
+32 3807200
+30 3803000
+28 3798700
+26 3794300
+24 3788000
+22 3778800
+20 3768300
+18 3757100
+16 3744400
+14 3728800
+12 3715200
+10 3706600
+9 3704300
+8 3702800
+7 3700900
+6 3695800
+5 3670700
+4 3627100
+3 3569600
+2 3491200
+1 3368800
+0 3000000
+OCV
+		;;
+	esac
+}
+
+byte() {
+	dd if="$SDAM" bs=1 skip="$1" count=1 2>/dev/null | od -An -tu1 | tr -d " \n"
+}
+
+enable() {
+	echo 1 > "$CHG"
+	printf "charging %s\n" "$NOW" > "$STATE"
+}
+
+disable() {
+	echo 0 > "$CHG"
+	printf "idle %s\n" "$NOW" > "$STATE"
+}
+
+v=$(cat "$IIO/in_voltage_vbat_sns_input" 2>/dev/null)
+case "$v" in *[!0-9]*|"") v="";; esac
+
+# --- SoC from the OCV table (relaxed cell voltage) -------------------------
+soc=""
+if [ -n "$v" ]; then
+	soc=$(ocv | {
+		prev_s=""
+		prev_v=""
+		while read -r s u; do
+			if [ -n "$prev_s" ] && [ "$v" -le "$prev_v" ] && [ "$v" -ge "$u" ]; then
+				echo $((prev_s - (prev_s - s) * (prev_v - v) / (prev_v - u)))
+				exit
+			fi
+			prev_s=$s
+			prev_v=$u
+		done
+		if [ -n "$prev_v" ]; then
+			if [ "$v" -gt "$prev_v" ]; then
+				echo 100
+			elif [ "$v" -lt 3000000 ]; then
+				echo 0
+			fi
 		fi
-	fi
+	})
 fi
 
 # --- QG gauge byte: only when it agrees with the OCV estimate --------------

@@ -481,7 +481,7 @@ charge_enable=1 / status 0x1006     4 (TAPER_CHARGE)
 battery-guard.timer                 active, 30 s period
 ```
 
-The guard stops at >=60% and resumes at <=40%. Since the mainline kernel runs
+The guard stops at >=50% and resumes at <=40%. Since the mainline kernel runs
 no QG fuel gauge, the SDAM value above is a frozen bootloader anchor and not a
 live SoC; see "Battery guard rebuilt on the OCV curve (2026-11-11)" below.
 
@@ -494,11 +494,12 @@ triggered at <=3.65 V, so the pack silently drained and cycled far below the
 intended band.
 
 `rootfs/battery-guard.sh` now estimates the SoC from the relaxed `vbat_sns`
-voltage with the vendor OCV table of the installed cell (mg50-atl-5000mah,
-`qcom,pc-temp-v1-lut`, 25 C column, `kernel/dts/abl-merged-gcc.dts`) and only
+voltage with the vendor OCV table of the installed cell (MG50 or KZ40 by
+`/chosen/mmi,battid`, `qcom,pc-temp-v1-lut`, 25 C column,
+`kernel/dts/abl-merged-gcc.dts`) and only
 trusts the gauge byte when it agrees within 8 points. While charging the
 terminal voltage is dominated by IR drop, so charging runs in pulses
-(240 s on, 180 s off); the 60% stop decision is made on the relaxed voltage at
+(240 s on, 180 s off); the 50% stop decision is made on the relaxed voltage at
 the end of the rest, and charging resumes at <=40%. The state machine lives in
 `/run/battery-guard.state` (`/tmp` when the busybox init runs without /run).
 

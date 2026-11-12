@@ -101,16 +101,18 @@ default route), so dual-stack clients fall back to IPv4.
 
 ## Battery guard
 
-`battery-guard.timer` keeps the pack between 40% and 60%. The mainline kernel
+`battery-guard.timer` keeps the pack between 40% and 50%. The mainline kernel
 does not run the QG fuel gauge, so `/sys/class/power_supply` is empty and the
 SDAM msoc byte (offset 0x47) is a frozen bootloader anchor (normally 100%).
 The guard therefore estimates the SoC from the relaxed `vbat_sns` voltage with
-the vendor OCV table of the installed cell (mg50-atl-5000mah,
-`qcom,pc-temp-v1-lut`, 25 C column) and only uses the gauge byte when it
-agrees with that estimate within 8 points.
+the vendor OCV table of the installed cell (`qcom,pc-temp-v1-lut`, 25 C
+column) and only uses the gauge byte when it agrees with that estimate within
+8 points. The table is picked from the pack serial number ABL puts into
+`/chosen/mmi,battid`: MG50 5000 mAh (SB18C80753, SB18C86661) or KZ40
+3600 mAh (SB18C41148, SB18C41504). With any other ID the guard does nothing.
 
 While charging the terminal voltage is dominated by IR drop and polarization,
-so charging runs in pulses: at most 240 s on, then 180 s off, and the 60% stop
+so charging runs in pulses: at most 240 s on, then 180 s off, and the 50% stop
 decision is taken on the relaxed voltage at the end of the rest. Charging
 resumes once the relaxed voltage drops to <=40%. There is no current/power
 telemetry, so the percentage stays an estimate (a few points low under load)

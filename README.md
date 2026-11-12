@@ -19,7 +19,7 @@ ABL -> boot_b (U-Boot chainload) -> FIT (Linux 6.12 + DTB + initramfs)
 | Storage | UFS, root on `/dev/sdb24` (userdata), growfs to 107 G |
 | USB | DWC3/QUSB2 gadget, NCM, `usb0` 172.16.42.1/24, Dropbear SSH |
 | Userspace | Ubuntu 26.04.1 LTS, systemd 259.9, dbus, iproute2 |
-| Battery | 40-60% charge guard, PM6150 charge control (0x1042[0]) |
+| Battery | 40-50% charge guard, PM6150 charge control (0x1042[0]) |
 | Screen | boot console visible, then WLED backlight off (true off) |
 | Status LED | PM6150L TRILED (`qcom-spmi-lpg`), front LED on channel 1, `heartbeat` trigger |
 | Modem | `remoteproc0` = `4080000.qcom,mss` (`qcom,sm6150-mpss-pas`), runs stably (SMEM `mmi_unit_info` v3 via `wlan/modules/mmi_unit_info.c`), GLINK/IPCRTR up, QRTR works, `rmtfs` + `pd-mapper` active |
