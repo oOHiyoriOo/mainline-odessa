@@ -105,7 +105,7 @@ default route), so dual-stack clients fall back to IPv4.
 does not run the QG fuel gauge, so `/sys/class/power_supply` is empty and the
 SDAM msoc byte (offset 0x47) is a frozen bootloader anchor (normally 100%).
 The guard therefore estimates the SoC from the relaxed `vbat_sns` voltage with
-the vendor OCV table of the installed cell (kz40-atl-3600mah,
+the vendor OCV table of the installed cell (mg50-atl-5000mah,
 `qcom,pc-temp-v1-lut`, 25 C column) and only uses the gauge byte when it
 agrees with that estimate within 8 points.
 

@@ -494,7 +494,7 @@ triggered at <=3.65 V, so the pack silently drained and cycled far below the
 intended band.
 
 `rootfs/battery-guard.sh` now estimates the SoC from the relaxed `vbat_sns`
-voltage with the vendor OCV table of the installed cell (kz40-atl-3600mah,
+voltage with the vendor OCV table of the installed cell (mg50-atl-5000mah,
 `qcom,pc-temp-v1-lut`, 25 C column, `kernel/dts/abl-merged-gcc.dts`) and only
 trusts the gauge byte when it agrees within 8 points. While charging the
 terminal voltage is dominated by IR drop, so charging runs in pulses

@@ -45,12 +45,12 @@ set_v 4030000
 set_chg 0
 rm -f "$T/state"
 guard 1000
-expect "100% anchor and 4.03 V (~68%) stays off" 0
+expect "100% anchor and 4.03 V (~63%) stays off" 0
 
 echo "-- 40/60 band, pulsed charge with rest measurement"
 set_v 3820000
 guard 1030
-expect "~38% enables charging" 1
+expect "~34% enables charging" 1
 guard 1269
 expect "inside charge window stays on" 1
 guard 1270
@@ -60,22 +60,22 @@ guard 1449
 expect "rest period not over yet" 0
 set_v 3900000
 guard 1450
-expect "~55% after rest resumes charging" 1
+expect "~50% after rest resumes charging" 1
 guard 1690
 expect "second pulse expired -> off" 0
 guard 1869
 expect "rest after second pulse" 0
-set_v 3980000
+set_v 4010000
 guard 1870
-expect "~62% after rest ends the charge phase" 0
+expect "~61% after rest ends the charge phase" 0
 
 echo "-- idle hysteresis: no top-up between 40% and 60%"
 set_v 3900000
 guard 1900
-expect "~55% idle stays off" 0
+expect "~50% idle stays off" 0
 set_v 3820000
 guard 1930
-expect "~38% idle starts charging" 1
+expect "~34% idle starts charging" 1
 
 echo "-- charger already on without state is adopted, then stopped"
 rm -f "$T/state"
@@ -101,7 +101,7 @@ set_chg 0
 set_qg 30
 set_v 4030000
 guard 2100
-expect "gauge 30% contradicts 68% -> gauge ignored, stays off" 0
+expect "gauge 30% contradicts 63% -> gauge ignored, stays off" 0
 rm -f "$T/state"
 set_chg 0
 no_v
