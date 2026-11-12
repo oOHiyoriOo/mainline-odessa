@@ -27,8 +27,10 @@ set_qg() { # percent
 set_v() { echo "$1" > "$T/iio/in_voltage_vbat_sns_input"; }
 no_v()  { rm -f "$T/iio/in_voltage_vbat_sns_input"; }
 set_chg() { echo "$1" > "$T/chg/charge_enable"; }
+set_id() { printf '%s\000' "$1" > "$T/battid"; }
+set_id SB18C80753
 guard() {
-	NOW=$1 SDAM=$T/sdam IIO=$T/iio CHG=$T/chg/charge_enable \
+	NOW=$1 SDAM=$T/sdam IIO=$T/iio CHG=$T/chg/charge_enable BATTID=$T/battid \
 		STATE=$T/state sh "$GUARD"
 }
 expect() { # name, expected charge_enable
@@ -45,12 +47,12 @@ set_v 4030000
 set_chg 0
 rm -f "$T/state"
 guard 1000
-expect "100% anchor and 4.03 V (~68%) stays off" 0
+expect "100% anchor and 4.03 V (~63%) stays off" 0
 
-echo "-- 40/60 band, pulsed charge with rest measurement"
+echo "-- 40/50 band, pulsed charge with rest measurement"
 set_v 3820000
 guard 1030
-expect "~38% enables charging" 1
+expect "~34% enables charging" 1
 guard 1269
 expect "inside charge window stays on" 1
 guard 1270
@@ -58,24 +60,24 @@ expect "charge window expired -> off" 0
 grep -q '^resting ' "$T/state" && ok "state=resting" || bad "state is not resting"
 guard 1449
 expect "rest period not over yet" 0
-set_v 3900000
+set_v 3870000
 guard 1450
-expect "~55% after rest resumes charging" 1
+expect "~45% after rest resumes charging" 1
 guard 1690
 expect "second pulse expired -> off" 0
 guard 1869
 expect "rest after second pulse" 0
-set_v 3980000
+set_v 3905000
 guard 1870
-expect "~62% after rest ends the charge phase" 0
+expect "~51% after rest ends the charge phase" 0
 
-echo "-- idle hysteresis: no top-up between 40% and 60%"
-set_v 3900000
+echo "-- idle hysteresis: no top-up between 40% and 50%"
+set_v 3870000
 guard 1900
-expect "~55% idle stays off" 0
+expect "~45% idle stays off" 0
 set_v 3820000
 guard 1930
-expect "~38% idle starts charging" 1
+expect "~34% idle starts charging" 1
 
 echo "-- charger already on without state is adopted, then stopped"
 rm -f "$T/state"
@@ -101,13 +103,37 @@ set_chg 0
 set_qg 30
 set_v 4030000
 guard 2100
-expect "gauge 30% contradicts 68% -> gauge ignored, stays off" 0
+expect "gauge 30% contradicts 63% -> gauge ignored, stays off" 0
 rm -f "$T/state"
 set_chg 0
 no_v
 set_qg 200
 guard 2200
 expect "invalid gauge byte and no vbat -> state unchanged" 0
+
+echo "-- battery id selects the OCV table"
+rm -f "$T/state" "$T/state.unknown"
+set_qg 0
+set_chg 0
+set_v 3840000
+guard 2300
+expect "MG50 at 3.84 V (~38%) starts charging" 1
+rm -f "$T/state"
+set_chg 0
+set_id SB18C41148
+guard 2400
+expect "KZ40 at 3.84 V (~42%) stays off" 0
+rm -f "$T/state"
+set_chg 0
+set_v 3300000
+set_id SB18C99999
+guard 2500
+expect "unknown id leaves the charger alone, even below the floor" 0
+[ -e "$T/state.unknown" ] && ok "unknown id is remembered" ||
+	bad "unknown id is not remembered"
+rm -f "$T/battid"
+guard 2600
+expect "missing id leaves the charger alone" 0
 
 echo
 if [ "$fail" -eq 0 ]; then
